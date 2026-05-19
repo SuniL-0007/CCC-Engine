@@ -23,7 +23,14 @@ code {
   font-family: 'Courier New', monospace;
 }
 
-/* Smooth transitions */
+.fabric-grid {
+  background:
+    linear-gradient(90deg, rgba(27, 58, 107, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(27, 58, 107, 0.06) 1px, transparent 1px),
+    linear-gradient(135deg, rgba(0, 166, 81, 0.08), rgba(245, 166, 35, 0.06));
+  background-size: 28px 28px, 28px 28px, 100% 100%;
+}
+
 @layer components {
   .transition-smooth {
     @apply transition-all duration-300 ease-in-out;
@@ -39,5 +46,9 @@ code {
 
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-lg border border-primary bg-white px-6 py-2 text-primary font-medium transition-smooth hover:bg-primary hover:text-white disabled:opacity-50;
+  }
+
+  .input-field {
+    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-smooth placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20;
   }
 }

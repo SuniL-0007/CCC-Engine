@@ -7,6 +7,14 @@ export const COLUMN_ALIASES: Record<string, string[]> = {
     'Bill Date',
     'Transaction Date',
   ],
+  invoiceNo: [
+    'Invoice No',
+    'Invoice Number',
+    'Voucher No',
+    'Bill No',
+    'Reference No',
+    'Ref No',
+  ],
   counterpartyName: [
     'Party Name',
     "Party's Name",
@@ -27,6 +35,9 @@ export const COLUMN_ALIASES: Record<string, string[]> = {
     'Invoice Amount',
     'Sales Amount',
     'Purchase Amount',
+    'Grand Total',
+    'Debit',
+    'Credit',
   ],
   dueDate: [
     'Due Date',
@@ -50,6 +61,15 @@ export const COLUMN_ALIASES: Record<string, string[]> = {
     'Balance Value',
     'Closing Balance Value',
     'Stock Balance Value',
+    'Value',
+  ],
+  itemName: [
+    'Stock Item',
+    'Item Name',
+    'Item',
+    'Particulars',
+    'Product',
+    'Description',
   ],
   quantity: [
     'Closing Balance',
@@ -68,12 +88,12 @@ export const COLUMN_ALIASES: Record<string, string[]> = {
 
 export function fuzzyMatchColumn(columnName: string, fieldKey: keyof typeof COLUMN_ALIASES): boolean {
   const aliases = COLUMN_ALIASES[fieldKey];
-  const normalized = columnName.toLowerCase().trim();
+  const normalized = normalizeColumn(columnName);
   
   return aliases.some(alias => 
-    normalized === alias.toLowerCase() || 
-    normalized.includes(alias.toLowerCase()) ||
-    alias.toLowerCase().includes(normalized)
+    normalized === normalizeColumn(alias) || 
+    normalized.includes(normalizeColumn(alias)) ||
+    normalizeColumn(alias).includes(normalized)
   );
 }
 
@@ -82,4 +102,11 @@ export function findMatchingColumn(
   fieldKey: keyof typeof COLUMN_ALIASES
 ): string | undefined {
   return headers.find(header => fuzzyMatchColumn(header, fieldKey));
+}
+
+function normalizeColumn(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }

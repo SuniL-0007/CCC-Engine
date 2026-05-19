@@ -1,7 +1,9 @@
-// CCC Engine Types
+export type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
+
 export interface ParsedInvoice {
   id: string;
   counterpartyName: string;
+  invoiceNo?: string;
   invoiceDate: Date;
   amount: number;
   dueDate: Date;
@@ -47,12 +49,17 @@ export interface CCCResult {
   ccc: number;
   benchmarkCCC: number;
   gapDays: number;
+  periodDays: number;
+  estimatedCashLockedLakhs: number;
+  summary: CCCSummary;
+  generatedAt: string;
+  warnings: string[];
   recommendations?: Recommendation[];
 }
 
 export interface Recommendation {
   id: string;
-  dimension: 'DIO' | 'DSO' | 'DPO';
+  dimension: MetricDimension;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
   title: string;
   explanation: string;
@@ -66,14 +73,26 @@ export interface CompanyContext {
   buyerTypes: string[];
   month: number;
   revenueRange: string;
+  companyName?: string;
+  city?: string;
+  dataSource?: string;
 }
 
 export interface RecommendationCandidate {
   id: string;
-  dimension: 'DIO' | 'DSO' | 'DPO';
+  dimension: MetricDimension;
   priority: number;
   title: string;
   estimatedDays: number;
+}
+
+export interface CCCSummary {
+  totalSales: number;
+  totalPurchases: number;
+  totalInventory: number;
+  outstandingAR: number;
+  outstandingAP: number;
+  cogs: number;
 }
 
 export interface ParseResult {

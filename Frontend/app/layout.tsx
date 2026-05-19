@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -6,7 +6,6 @@ export const metadata: Metadata = {
   description: 'Find out in 60 seconds how much cash is trapped in your textile business.',
   keywords: ['textile', 'cash conversion cycle', 'working capital', 'India'],
   authors: [{ name: 'FabricCash' }],
-  viewport: 'width=device-width, initial-scale=1.0',
   openGraph: {
     type: 'website',
     locale: 'en_IN',
@@ -23,6 +22,12 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#1B3A6B',
+};
+
 export default function RootLayout({
   children,
 }: {
@@ -31,8 +36,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <meta charSet="utf-8" />
-        <meta name="theme-color" content="#1B3A6B" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>

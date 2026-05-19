@@ -11,7 +11,7 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
 - ✅ Upload-first flow (zero friction)
 - ✅ Client-side file parsing (100% privacy - no data uploaded)
 - ✅ Instant CCC calculation
-- ✅ AI-powered recommendations (Layer 1 rules + Layer 2 Claude API)
+- ✅ AI-powered recommendations (Layer 1 rules + Layer 2 Gemini API)
 - ✅ PDF report generation
 - ✅ Free for all users (no paywall)
 
@@ -20,7 +20,7 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
 ```
 /app                          # Next.js App Router
   /api
-    /recommendations          # Layer 2 Claude AI enrichment
+    /recommendations          # Layer 2 Gemini AI enrichment
     /snapshots/save          # Save CCC snapshots to database
   /login                      # Login page
   /dashboard                  # User dashboard (future)
@@ -49,7 +49,7 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
     - benchmarks.json        # Industry benchmarks
   /recommendations           # Recommendation engine
     - layer1Rules.ts         # Rule-based recommendations
-    - claudeClient.ts        # Claude API client (future)
+    - geminiClient.ts        # Gemini API client
   /report                     # PDF generation
     - pdfGenerator.ts        # jsPDF report builder
   /auth                       # Authentication
@@ -66,12 +66,12 @@ docker-compose.yml            # Local PostgreSQL setup
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 (App Router)
+- **Framework**: Next.js 15 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Database**: PostgreSQL + Prisma
 - **Auth**: Supabase
-- **AI**: Claude API (Anthropic)
+- **AI**: Gemini API
 - **File Parsing**: SheetJS (XLSX)
 - **PDF**: jsPDF + jspdf-autotable
 - **Validation**: Zod
@@ -82,7 +82,7 @@ docker-compose.yml            # Local PostgreSQL setup
 
 - Node.js 18+
 - Docker & Docker Compose
-- Anthropic API key (for Claude)
+- Gemini API key
 - Supabase account (for auth)
 
 ### Installation
@@ -138,7 +138,7 @@ npm run prisma:migrate   # Run database migrations
 - Outputs up to 8 candidate recommendations
 
 ### Layer 2: AI Enrichment (Server-Side)
-- Claude Sonnet 4 API
+- Gemini API with structured JSON output
 - Re-ranks candidates by business impact
 - Enriches with action steps and estimated cash freed
 - Returns top 5 recommendations (~2s latency)
@@ -171,7 +171,8 @@ npm test
 See `.env.example` for all required variables:
 
 - `DATABASE_URL`: PostgreSQL connection string
-- `ANTHROPIC_API_KEY`: Claude API key
+- `GEMINI_API_KEY`: Gemini API key
+- `GEMINI_MODEL`: Gemini model name, defaults to `gemini-2.5-flash`
 - `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anonymous key
 

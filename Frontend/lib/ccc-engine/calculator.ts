@@ -59,15 +59,19 @@ export function calculateCCCMetrics(
     CCC: 41,
   }
 ): CCCResult {
-  // Calculate totals
+  const periodDays = inferAnalysisPeriodDays(parseResult);
+
   const totalSales = parseResult.sales.reduce((sum, inv) => sum + inv.amount, 0);
   const totalPurchases = parseResult.purchases.reduce((sum, inv) => sum + inv.amount, 0);
   const totalInventory = parseResult.inventory.reduce((sum, item) => sum + item.closingValue, 0);
 
-  // For simplicity, using total purchases as COGS
-  const cogs = totalPurchases;
+  const warnings = [...parseResult.warnings];
+  const cogs = totalPurchases > 0 ? totalPurchases : totalSales * 0.7;
 
-  // Outstanding amounts (unpaid invoices)
+  if (totalPurchases === 0 && totalSales > 0) {
+    warnings.push('Purchase data was missing, so COGS was estimated as 70% of sales.');
+  }
+
   const outstandingAR = parseResult.sales
     .filter(inv => !inv.paymentDate)
     .reduce((sum, inv) => sum + inv.amount, 0);
@@ -76,11 +80,12 @@ export function calculateCCCMetrics(
     .filter(inv => !inv.paymentDate)
     .reduce((sum, inv) => sum + inv.amount, 0);
 
-  // Calculate metrics
-  const dio = calculateDIO(totalInventory, cogs);
-  const dso = calculateDSO(outstandingAR, totalSales);
-  const dpo = calculateDPO(outstandingAP, cogs);
+  const dio = calculateDIO(totalInventory, cogs, periodDays);
+  const dso = calculateDSO(outstandingAR, totalSales, periodDays);
+  const dpo = calculateDPO(outstandingAP, cogs, periodDays);
   const ccc = calculateCCC(dio, dso, dpo);
+  const gapDays = Math.round((ccc - benchmarks.CCC) * 100) / 100;
+  const estimatedCashLockedLakhs = estimateCashLockedLakhs(totalSales, periodDays, gapDays);
 
   return {
     dio: {
@@ -100,6 +105,40 @@ export function calculateCCCMetrics(
     },
     ccc,
     benchmarkCCC: benchmarks.CCC,
-    gapDays: Math.round((ccc - benchmarks.CCC) * 100) / 100,
+    gapDays,
+    periodDays,
+    estimatedCashLockedLakhs,
+    summary: {
+      totalSales,
+      totalPurchases,
+      totalInventory,
+      outstandingAR,
+      outstandingAP,
+      cogs,
+    },
+    generatedAt: new Date().toISOString(),
+    warnings,
   };
+}
+
+function inferAnalysisPeriodDays(parseResult: ParseResult): number {
+  const dates = [...parseResult.sales, ...parseResult.purchases]
+    .map((invoice) => invoice.invoiceDate)
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .map((date) => date.getTime());
+
+  if (dates.length < 2) return 365;
+
+  const min = Math.min(...dates);
+  const max = Math.max(...dates);
+  const days = Math.ceil((max - min) / (24 * 60 * 60 * 1000)) + 1;
+
+  return Math.min(365, Math.max(30, days));
+}
+
+function estimateCashLockedLakhs(totalSales: number, periodDays: number, gapDays: number): number {
+  if (gapDays <= 0 || totalSales <= 0 || periodDays <= 0) return 0;
+
+  const dailySales = totalSales / periodDays;
+  return Math.round((dailySales * gapDays) / 1000) / 100;
 }

@@ -1,228 +1,326 @@
 'use client';
 
-import { useState } from 'react';
-import { parseExcelFile } from '@/lib/parser/sheetjs';
+import { useMemo, useState } from 'react';
+import { CCCResult, CompanyContext, ParseResult } from '@/lib/ccc-engine/types';
 import { calculateCCCMetrics } from '@/lib/ccc-engine/calculator';
-import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
-import { CCCResult } from '@/lib/ccc-engine/types';
+import { evaluateLayer1, buildFallbackRecommendations } from '@/lib/recommendations/layer1Rules';
+import { ExpectedFileType, parseExcelFile } from '@/lib/parser/sheetjs';
+
+type UploadKey = 'sales' | 'purchase' | 'stock';
+type UploadedFiles = Record<UploadKey, File | null>;
+
+const EMPTY_FILES: UploadedFiles = {
+  sales: null,
+  purchase: null,
+  stock: null,
+};
+
+const SLOT_CONFIG: Array<{
+  key: UploadKey;
+  expectedType: ExpectedFileType;
+  name: string;
+  helper: string;
+}> = [
+  {
+    key: 'sales',
+    expectedType: 'SALES_REGISTER',
+    name: 'Sales Register',
+    helper: 'Customer invoices and due dates',
+  },
+  {
+    key: 'purchase',
+    expectedType: 'PURCHASE_REGISTER',
+    name: 'Purchase Register',
+    helper: 'Vendor bills and payment dates',
+  },
+  {
+    key: 'stock',
+    expectedType: 'STOCK_SUMMARY',
+    name: 'Stock Summary',
+    helper: 'Closing stock value and quantity',
+  },
+];
+
+const SOFTWARE_BADGES = ['Tally', 'Zoho Books', 'Busy', 'Excel'];
 
 export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult) => void }) {
-  const [isDragging, setIsDragging] = useState(false);
+  const [isDragging, setIsDragging] = useState<UploadKey | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<{ [key: string]: File | null }>({
-    sales: null,
-    purchase: null,
-    stock: null,
-  });
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFiles>(EMPTY_FILES);
   const [error, setError] = useState<string | null>(null);
+  const uploadedCount = useMemo(
+    () => Object.values(uploadedFiles).filter(Boolean).length,
+    [uploadedFiles]
+  );
 
-  const handleFiles = async (files: FileList | null) => {
-    if (!files) return;
+  const handleSlotFiles = async (slotKey: UploadKey, fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
 
     try {
       setError(null);
-      setIsLoading(true);
+      const files = Array.from(fileList);
 
-      const fileArray = Array.from(files);
-      const filesByType: { [key: string]: File | null } = { ...uploadedFiles };
+      if (files.length === 1) {
+        const file = files[0];
+        const completeWorkbook = await tryProcessCompleteWorkbook(file);
 
-      for (const file of fileArray) {
-        const name = file.name.toLowerCase();
-        if (name.includes('sales')) filesByType.sales = file;
-        else if (name.includes('purchase') || name.includes('bill')) filesByType.purchase = file;
-        else if (name.includes('stock') || name.includes('inventory')) filesByType.stock = file;
+        if (completeWorkbook) return;
+
+        const nextFiles = { ...uploadedFiles, [slotKey]: file };
+        setUploadedFiles(nextFiles);
+        if (hasAllFiles(nextFiles)) {
+          await processFiles(nextFiles);
+        }
+        return;
       }
 
-      setUploadedFiles(filesByType);
+      const nextFiles = classifyDroppedFiles(files, uploadedFiles, slotKey);
+      setUploadedFiles(nextFiles);
 
-      // If all three files are uploaded, process them
-      if (filesByType.sales && filesByType.purchase && filesByType.stock) {
-        await processFiles(filesByType.sales, filesByType.purchase, filesByType.stock);
+      if (hasAllFiles(nextFiles)) {
+        await processFiles(nextFiles);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process files');
+      setError(err instanceof Error ? err.message : 'Failed to process files.');
       setIsLoading(false);
     }
   };
 
-  const processFiles = async (salesFile: File, purchaseFile: File, stockFile: File) => {
+  const tryProcessCompleteWorkbook = async (file: File): Promise<boolean> => {
+    setIsLoading(true);
+
     try {
-      setIsLoading(true);
+      const parsed = await parseExcelFile(file);
+      const isComplete =
+        parsed.sales.length > 0 && parsed.purchases.length > 0 && parsed.inventory.length > 0;
 
-      // Parse all three files
-      const [salesResult, purchaseResult, stockResult] = await Promise.all([
-        parseExcelFile(salesFile),
-        parseExcelFile(purchaseFile),
-        parseExcelFile(stockFile),
-      ]);
+      if (!isComplete) return false;
 
-      // Combine results
-      const combinedResult = {
-        sales: salesResult.sales,
-        purchases: purchaseResult.sales, // The purchase file contains purchase invoices
-        inventory: stockResult.inventory,
-        warnings: [...salesResult.warnings, ...purchaseResult.warnings, ...stockResult.warnings],
-      };
-
-      // Calculate CCC metrics
-      const cccResult = calculateCCCMetrics(combinedResult);
-
-      // Evaluate Layer 1 rules
-      const layer1Candidates = evaluateLayer1(cccResult);
-
-      // Fetch Layer 2 AI enrichment
-      try {
-        const response = await fetch('/api/recommendations', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cccResult,
-            companyContext: {
-              fabricTypes: [],
-              buyerTypes: [],
-              month: new Date().getMonth() + 1,
-              revenueRange: 'unknown',
-            },
-            layer1Candidates,
-          }),
-        });
-
-        if (response.ok) {
-          const enrichedData = await response.json();
-          cccResult.recommendations = enrichedData.recommendations;
-        }
-      } catch {
-        // Fallback to Layer 1 only
-        cccResult.recommendations = layer1Candidates.map((c) => ({
-          id: c.id,
-          dimension: c.dimension,
-          priority: c.priority > 7 ? 'HIGH' : c.priority > 4 ? 'MEDIUM' : 'LOW',
-          title: c.title,
-          explanation: 'AI analysis pending',
-          actionSteps: ['Review this recommendation', 'Take action'],
-          estimatedDaysReduction: c.estimatedDays,
-          estimatedCashFreedLakhs: 0,
-        }));
-      }
-
-      onResultsReady(cccResult);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process files');
+      setUploadedFiles({ sales: file, purchase: file, stock: file });
+      await finishParse(parsed);
+      return true;
     } finally {
       setIsLoading(false);
     }
   };
 
+  const processFiles = async (files: UploadedFiles) => {
+    if (!hasAllFiles(files)) return;
+
+    setIsLoading(true);
+
+    try {
+      const [salesResult, purchaseResult, stockResult] = await Promise.all([
+        parseExcelFile(files.sales, 'SALES_REGISTER'),
+        parseExcelFile(files.purchase, 'PURCHASE_REGISTER'),
+        parseExcelFile(files.stock, 'STOCK_SUMMARY'),
+      ]);
+
+      await finishParse({
+        sales: salesResult.sales,
+        purchases: purchaseResult.purchases,
+        inventory: stockResult.inventory,
+        warnings: [...salesResult.warnings, ...purchaseResult.warnings, ...stockResult.warnings],
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const finishParse = async (parseResult: ParseResult) => {
+    const cccResult = calculateCCCMetrics(parseResult);
+    const companyContext = createCompanyContext();
+    const layer1Candidates = evaluateLayer1(cccResult, companyContext);
+    cccResult.recommendations = buildFallbackRecommendations(layer1Candidates, cccResult, companyContext);
+    onResultsReady(cccResult);
+
+    fetch('/api/recommendations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cccResult,
+        companyContext,
+        layer1Candidates,
+      }),
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const enrichedData = (await response.json()) as { recommendations?: CCCResult['recommendations'] };
+        if (enrichedData.recommendations?.length) {
+          onResultsReady({ ...cccResult, recommendations: enrichedData.recommendations });
+        }
+      })
+      .catch(() => {
+        onResultsReady(cccResult);
+      });
+  };
+
   return (
-    <div data-upload-widget className="space-y-4">
+    <div data-upload-widget className="space-y-5">
+      <div className="flex flex-wrap justify-center gap-2">
+        {SOFTWARE_BADGES.map((badge) => (
+          <span
+            key={badge}
+            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600"
+          >
+            {badge}
+          </span>
+        ))}
+      </div>
+
       {error && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-800">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           {error}
         </div>
       )}
 
       {isLoading && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800">
+        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
           <div className="flex items-center gap-2">
-            <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-            Parsing your data...
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+            Parsing your data in this browser...
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {[
-          { key: 'sales', name: 'Sales Register', icon: '📄' },
-          { key: 'purchase', name: 'Purchase Register', icon: '📄' },
-          { key: 'stock', name: 'Stock Summary', icon: '📦' },
-        ].map((slot) => (
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {SLOT_CONFIG.map((slot) => (
           <UploadSlot
             key={slot.key}
+            slotKey={slot.key}
             name={slot.name}
-            icon={slot.icon}
+            helper={slot.helper}
             file={uploadedFiles[slot.key]}
-            isDragging={isDragging}
-            onDragEnter={() => setIsDragging(true)}
-            onDragLeave={() => setIsDragging(false)}
+            isDragging={isDragging === slot.key}
+            onDragEnter={() => setIsDragging(slot.key)}
+            onDragLeave={() => setIsDragging(null)}
             onDrop={(files) => {
-              setIsDragging(false);
-              handleFiles(files);
+              setIsDragging(null);
+              void handleSlotFiles(slot.key, files);
             }}
           />
         ))}
       </div>
 
-      {Object.values(uploadedFiles).filter(Boolean).length > 0 && (
+      <div className="flex flex-col gap-3 sm:flex-row">
         <button
-          onClick={() =>
-            uploadedFiles.sales &&
-            uploadedFiles.purchase &&
-            uploadedFiles.stock &&
-            processFiles(uploadedFiles.sales, uploadedFiles.purchase, uploadedFiles.stock)
-          }
-          disabled={isLoading}
-          className="btn-primary w-full"
+          type="button"
+          onClick={() => void processFiles(uploadedFiles)}
+          disabled={isLoading || !hasAllFiles(uploadedFiles)}
+          className="btn-primary min-h-11 flex-1"
         >
           {isLoading ? 'Processing...' : 'Calculate CCC'}
         </button>
-      )}
+        <button
+          type="button"
+          onClick={() => {
+            setUploadedFiles(EMPTY_FILES);
+            setError(null);
+          }}
+          disabled={isLoading || uploadedCount === 0}
+          className="btn-secondary min-h-11 sm:w-36"
+        >
+          Clear
+        </button>
+      </div>
     </div>
   );
 }
 
 function UploadSlot({
+  slotKey,
   name,
-  icon,
+  helper,
   file,
   isDragging,
   onDragEnter,
   onDragLeave,
   onDrop,
 }: {
+  slotKey: UploadKey;
   name: string;
-  icon: string;
+  helper: string;
   file: File | null;
   isDragging: boolean;
   onDragEnter: () => void;
   onDragLeave: () => void;
-  onDrop: (files: FileList) => void;
+  onDrop: (files: FileList | null) => void;
 }) {
   return (
     <label
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop(e.dataTransfer.files);
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop(event.dataTransfer.files);
       }}
-      onDragOver={(e) => e.preventDefault()}
-      className={`relative block border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
-        isDragging ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary'
+      onDragOver={(event) => event.preventDefault()}
+      className={`relative block min-h-40 cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
+        isDragging ? 'border-primary bg-primary/5' : 'border-slate-300 bg-white hover:border-primary'
       } ${file ? 'border-green-500 bg-green-50' : ''}`}
     >
       <input
         type="file"
-        accept=".xlsx,.csv"
-        onChange={(e) => onDrop(e.target.files!)}
+        accept=".xlsx,.xls,.csv"
+        aria-label={`Upload ${name}`}
+        onChange={(event) => onDrop(event.target.files)}
         className="hidden"
       />
 
-      <div className="space-y-2">
-        <div className="text-2xl">{icon}</div>
+      <div className="flex h-full flex-col items-center justify-center gap-2">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-primary">
+          {slotKey === 'stock' ? 'ST' : slotKey === 'sales' ? 'AR' : 'AP'}
+        </div>
         {file ? (
-          <div>
-            <p className="font-medium text-green-700">{file.name}</p>
-            <p className="text-xs text-gray-600">
-              {(file.size / 1024).toFixed(1)} KB
-            </p>
+          <div className="max-w-full">
+            <p className="truncate text-sm font-semibold text-green-700">{file.name}</p>
+            <p className="text-xs text-slate-600">{(file.size / 1024).toFixed(1)} KB</p>
           </div>
         ) : (
           <div>
-            <p className="text-sm font-medium text-gray-700">{name}</p>
-            <p className="text-xs text-gray-500">Drag or click</p>
+            <p className="text-sm font-semibold text-slate-800">{name}</p>
+            <p className="text-xs text-slate-500">{helper}</p>
+            <p className="mt-2 text-xs font-medium text-primary">Drag here or click</p>
           </div>
         )}
       </div>
     </label>
   );
+}
+
+function hasAllFiles(files: UploadedFiles): files is Record<UploadKey, File> {
+  return Boolean(files.sales && files.purchase && files.stock);
+}
+
+function classifyDroppedFiles(
+  files: File[],
+  currentFiles: UploadedFiles,
+  fallbackSlot: UploadKey
+): UploadedFiles {
+  const nextFiles = { ...currentFiles };
+
+  files.forEach((file) => {
+    const name = file.name.toLowerCase();
+    if (name.includes('sales') || name.includes('sale') || name.includes('customer')) {
+      nextFiles.sales = file;
+    } else if (name.includes('purchase') || name.includes('bill') || name.includes('vendor')) {
+      nextFiles.purchase = file;
+    } else if (name.includes('stock') || name.includes('inventory')) {
+      nextFiles.stock = file;
+    } else {
+      nextFiles[fallbackSlot] = file;
+    }
+  });
+
+  return nextFiles;
+}
+
+function createCompanyContext(): CompanyContext {
+  return {
+    fabricTypes: [],
+    buyerTypes: [],
+    month: new Date().getMonth() + 1,
+    revenueRange: 'unknown',
+    dataSource: 'Tally/Excel export',
+  };
 }
