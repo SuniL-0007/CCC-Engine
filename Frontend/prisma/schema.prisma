@@ -1,0 +1,51 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id            String      @id @default(cuid())
+  userId        String      @unique
+  name          String
+  city          String
+  fabricTypes   String[]    @default([])
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  cccSnapshots  CCCSnapshot[]
+
+  @@index([userId])
+}
+
+model CCCSnapshot {
+  id              String      @id @default(cuid())
+  companyId       String
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Metrics
+  dio             Float
+  dso             Float
+  dpo             Float
+  ccc             Float
+  
+  // Context
+  benchmarkDio    Float       @default(38)
+  benchmarkDso    Float       @default(45)
+  benchmarkDpo    Float       @default(42)
+  benchmarkCcc    Float       @default(41)
+  
+  // Recommendations (stored as JSON)
+  recommendations Json
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([createdAt])
+}
