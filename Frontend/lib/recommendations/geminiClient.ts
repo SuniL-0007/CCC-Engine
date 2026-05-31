@@ -60,12 +60,8 @@ export async function enrichRecommendationsWithGemini(
       ],
       generationConfig: {
         temperature: 0.2,
-        responseFormat: {
-          text: {
-            mimeType: 'application/json',
-            schema: RESPONSE_SCHEMA,
-          },
-        },
+        responseMimeType: 'application/json',
+        responseJsonSchema: RESPONSE_SCHEMA,
       },
     }),
   });

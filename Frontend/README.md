@@ -192,6 +192,8 @@ See `.env.example` for all required variables:
 
 ## Deployment
 
+See `VERCEL_DEPLOYMENT.md` for the Vercel environment variable and database migration checklist.
+
 ### Build
 ```bash
 npm run build

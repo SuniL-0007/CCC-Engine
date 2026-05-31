@@ -41,6 +41,7 @@ export function SignUpModal({ result, onClose, onSaved }: SignUpModalProps) {
     try {
       const company = { email, companyName, city, fabricTypes };
       let userId = `local-${Date.now()}`;
+      let accessToken: string | null = null;
 
       if (isSupabaseConfigured()) {
         const supabase = getSupabaseBrowserClient();
@@ -58,9 +59,16 @@ export function SignUpModal({ result, onClose, onSaved }: SignUpModalProps) {
 
         if (signUpResult?.error) throw signUpResult.error;
         userId = signUpResult?.data.user?.id ?? userId;
+        accessToken = signUpResult?.data.session?.access_token ?? null;
+
+        if (!accessToken) {
+          throw new Error(
+            'Supabase did not return a session. Confirm the email, log in, then save the result again.'
+          );
+        }
       }
 
-      await saveSnapshot({ userId, ...company, result });
+      await saveSnapshot({ userId, accessToken, ...company, result });
       onSaved(
         isSupabaseConfigured()
           ? 'Results saved. You can track your CCC over time.'
@@ -200,6 +208,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 async function saveSnapshot(payload: {
   userId: string;
+  accessToken: string | null;
   email: string;
   companyName: string;
   city: string;
@@ -224,7 +233,10 @@ async function saveSnapshot(payload: {
 
   const response = await fetch('/api/snapshots/save', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${payload.accessToken}`,
+    },
     body: JSON.stringify(payload),
   });
 

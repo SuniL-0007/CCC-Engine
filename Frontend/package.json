@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "postinstall": "prisma generate",
     "db:up": "docker-compose up -d",
     "db:down": "docker-compose down",
     "db:seed": "prisma db seed",
@@ -15,6 +16,7 @@
     "prisma:migrate": "prisma migrate dev"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@radix-ui/react-dialog": "^1.1.2",
     "@supabase/ssr": "^0.10.3",
@@ -24,6 +26,7 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "next": "^15.0.0",
+    "pg": "^8.21.0",
     "prisma": "^7.8.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
