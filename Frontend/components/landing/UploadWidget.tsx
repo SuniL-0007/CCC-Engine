@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { CCCResult, CompanyContext, ParseResult } from '@/lib/ccc-engine/types';
 import { calculateCCCMetrics } from '@/lib/ccc-engine/calculator';
 import { evaluateLayer1, buildFallbackRecommendations } from '@/lib/recommendations/layer1Rules';
-import { ExpectedFileType, parseExcelFile } from '@/lib/parser/sheetjs';
+import { ExpectedFileType, parseExcelFile, parseExcelWorkbook } from '@/lib/parser/sheetjs';
 
 type UploadKey = 'sales' | 'purchase' | 'stock';
 type UploadedFiles = Record<UploadKey, File | null>;
@@ -90,7 +90,7 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
     setIsLoading(true);
 
     try {
-      const parsed = await parseExcelFile(file);
+      const parsed = await parseExcelWorkbook(file);
       const isComplete =
         parsed.sales.length > 0 && parsed.purchases.length > 0 && parsed.inventory.length > 0;
 
@@ -117,9 +117,9 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
       ]);
 
       await finishParse({
-        sales: salesResult.sales,
-        purchases: purchaseResult.purchases,
-        inventory: stockResult.inventory,
+        sales: salesResult.detectedType === 'SALES_REGISTER' ? salesResult.data : [],
+        purchases: purchaseResult.detectedType === 'PURCHASE_REGISTER' ? purchaseResult.data : [],
+        inventory: stockResult.detectedType === 'STOCK_SUMMARY' ? stockResult.data : [],
         warnings: [...salesResult.warnings, ...purchaseResult.warnings, ...stockResult.warnings],
       });
     } finally {

@@ -1,22 +1,6 @@
+export type { ParsedInvoice, ParsedInventoryItem, ParseResult } from '@/lib/parser/types';
+
 export type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
-
-export interface ParsedInvoice {
-  id: string;
-  counterpartyName: string;
-  invoiceNo?: string;
-  invoiceDate: Date;
-  amount: number;
-  dueDate: Date;
-  paymentDate?: Date;
-}
-
-export interface ParsedInventoryItem {
-  itemName: string;
-  closingValue: number;
-  quantity?: number;
-  rate?: number;
-  period: string;
-}
 
 export interface ParsedSalesRecord {
   counterpartyName: string;
@@ -93,11 +77,4 @@ export interface CCCSummary {
   outstandingAR: number;
   outstandingAP: number;
   cogs: number;
-}
-
-export interface ParseResult {
-  sales: ParsedInvoice[];
-  purchases: ParsedInvoice[];
-  inventory: ParsedInventoryItem[];
-  warnings: string[];
 }
