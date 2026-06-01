@@ -12,9 +12,11 @@ export const COLUMN_ALIASES: Record<ParserField, string[]> = {
     'Inv Date',
   ],
   invoiceNo: [
+    'invoiceNo',
     'Invoice No',
-    'Invoice Number',
+    'Vch No.',
     'Voucher No',
+    'Invoice Number',
     'Voucher Number',
     'Bill No',
     'Reference No',

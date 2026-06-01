@@ -20,11 +20,11 @@ export type RawSheetRow = Record<string, unknown>;
 export interface ParsedInvoice {
   id: string;
   counterpartyName: string;
-  invoiceNo?: string;
+  invoiceNo: string | null;
   invoiceDate: Date;
   amount: number;
   dueDate: Date;
-  paymentDate?: Date;
+  paymentDate: Date | null;
 }
 
 export interface ParsedInventoryItem {

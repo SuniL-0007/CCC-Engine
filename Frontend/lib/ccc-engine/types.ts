@@ -1,80 +1,26 @@
-export type { ParsedInvoice, ParsedInventoryItem, ParseResult } from '@/lib/parser/types';
-
-export type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
-
-export interface ParsedSalesRecord {
-  counterpartyName: string;
-  invoiceDate: Date;
-  amount: number;
-}
-
-export interface DIOMetric {
+export interface ComponentResult {
   value: number;
-  trendDelta: number;
   benchmark: number;
-}
-
-export interface DSOMetric {
-  value: number;
+  gapDays: number;
   trendDelta: number;
-  benchmark: number;
-}
-
-export interface DPOMetric {
-  value: number;
-  trendDelta: number;
-  benchmark: number;
+  dataCompleteness: number;
 }
 
 export interface CCCResult {
-  dio: DIOMetric;
-  dso: DSOMetric;
-  dpo: DPOMetric;
+  dio: ComponentResult;
+  dso: ComponentResult;
+  dpo: ComponentResult;
   ccc: number;
   benchmarkCCC: number;
   gapDays: number;
   periodDays: number;
-  estimatedCashLockedLakhs: number;
-  summary: CCCSummary;
-  generatedAt: string;
-  warnings: string[];
-  recommendations?: Recommendation[];
+  calculatedAt: Date;
 }
 
-export interface Recommendation {
+export interface Layer1Candidate {
   id: string;
-  dimension: MetricDimension;
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  title: string;
-  explanation: string;
-  actionSteps: string[];
-  estimatedDaysReduction: number;
-  estimatedCashFreedLakhs: number;
-}
-
-export interface CompanyContext {
-  fabricTypes: string[];
-  buyerTypes: string[];
-  month: number;
-  revenueRange: string;
-  companyName?: string;
-  city?: string;
-  dataSource?: string;
-}
-
-export interface RecommendationCandidate {
-  id: string;
-  dimension: MetricDimension;
+  dimension: 'DIO' | 'DSO' | 'DPO';
   priority: number;
   title: string;
-  estimatedDays: number;
-}
-
-export interface CCCSummary {
-  totalSales: number;
-  totalPurchases: number;
-  totalInventory: number;
-  outstandingAR: number;
-  outstandingAP: number;
-  cogs: number;
+  estimatedDaysReduction: number;
 }

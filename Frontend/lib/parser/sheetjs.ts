@@ -447,7 +447,7 @@ function parseInvoiceRegister(
 
       if (!invoiceDate || amount === null || amount === 0) return null;
 
-      const invoiceNo = columnMap.invoiceNo ? stringifyCell(row[columnMap.invoiceNo]) : '';
+      const invoiceNo = columnMap.invoiceNo ? stringifyCell(row[columnMap.invoiceNo]) || null : null;
       const counterpartyName = columnMap.counterpartyName
         ? stringifyCell(row[columnMap.counterpartyName])
         : '';
@@ -455,13 +455,13 @@ function parseInvoiceRegister(
       const paymentDate = columnMap.paymentDate ? parseDate(row[columnMap.paymentDate]) : null;
 
       return {
-        id: buildInvoiceId(kind, sourceLabel, index, invoiceNo),
+        id: buildInvoiceId(kind, sourceLabel, index, invoiceNo ?? undefined),
         counterpartyName: counterpartyName || defaultParty(kind, index),
-        invoiceNo: invoiceNo || undefined,
+        invoiceNo,
         invoiceDate,
         amount: Math.abs(amount),
         dueDate: dueDate ?? addDays(invoiceDate, 30),
-        paymentDate: paymentDate ?? undefined,
+        paymentDate: paymentDate ?? null,
       };
     })
     .filter((invoice): invoice is ParsedInvoice => invoice !== null);

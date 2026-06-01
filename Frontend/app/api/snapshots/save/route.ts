@@ -11,25 +11,32 @@ const SnapshotSchema = z.object({
   city: z.string().min(1),
   fabricTypes: z.array(z.string()),
   result: z.object({
-    dio: z.object({ value: z.number(), benchmark: z.number(), trendDelta: z.number() }),
-    dso: z.object({ value: z.number(), benchmark: z.number(), trendDelta: z.number() }),
-    dpo: z.object({ value: z.number(), benchmark: z.number(), trendDelta: z.number() }),
+    dio: z.object({
+      value: z.number(),
+      benchmark: z.number(),
+      gapDays: z.number(),
+      trendDelta: z.number(),
+      dataCompleteness: z.number(),
+    }),
+    dso: z.object({
+      value: z.number(),
+      benchmark: z.number(),
+      gapDays: z.number(),
+      trendDelta: z.number(),
+      dataCompleteness: z.number(),
+    }),
+    dpo: z.object({
+      value: z.number(),
+      benchmark: z.number(),
+      gapDays: z.number(),
+      trendDelta: z.number(),
+      dataCompleteness: z.number(),
+    }),
     ccc: z.number(),
     benchmarkCCC: z.number(),
     gapDays: z.number(),
     periodDays: z.number(),
-    estimatedCashLockedLakhs: z.number(),
-    generatedAt: z.string(),
-    warnings: z.array(z.string()),
-    summary: z.object({
-      totalSales: z.number(),
-      totalPurchases: z.number(),
-      totalInventory: z.number(),
-      outstandingAR: z.number(),
-      outstandingAP: z.number(),
-      cogs: z.number(),
-    }),
-    recommendations: z.array(z.unknown()).optional(),
+    calculatedAt: z.string(),
   }),
 });
 
@@ -64,7 +71,7 @@ export async function POST(request: NextRequest) {
         benchmarkDso: snapshot.result.dso.benchmark,
         benchmarkDpo: snapshot.result.dpo.benchmark,
         benchmarkCcc: snapshot.result.benchmarkCCC,
-        recommendations: (snapshot.result.recommendations ?? []) as Prisma.InputJsonValue,
+        recommendations: [] as Prisma.InputJsonValue,
       },
     });
 

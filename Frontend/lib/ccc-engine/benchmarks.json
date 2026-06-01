@@ -1,21 +1,9 @@
 {
-  "DIO": {
-    "default": 38,
-    "industry": "Textile - Knit",
-    "description": "Days Inventory Outstanding"
-  },
-  "DSO": {
-    "default": 45,
-    "industry": "Textile - Exports",
-    "description": "Days Sales Outstanding"
-  },
-  "DPO": {
-    "default": 42,
-    "industry": "Textile - Knit",
-    "description": "Days Payable Outstanding"
-  },
-  "CCC": {
-    "default": 41,
-    "description": "Cash Conversion Cycle = DIO + DSO - DPO"
+  "textile": {
+    "dio": 38,
+    "dso": 45,
+    "dpo": 42,
+    "ccc": 41,
+    "maxDPO": 65
   }
 }

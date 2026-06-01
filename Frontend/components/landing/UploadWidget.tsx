@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CCCResult, CompanyContext, ParseResult } from '@/lib/ccc-engine/types';
-import { calculateCCCMetrics } from '@/lib/ccc-engine/calculator';
-import { evaluateLayer1, buildFallbackRecommendations } from '@/lib/recommendations/layer1Rules';
-import { ExpectedFileType, parseExcelFile, parseExcelWorkbook } from '@/lib/parser/sheetjs';
+import type { CCCResult } from '@/lib/ccc-engine/types';
+import { calculateCCC, calculateDIO, calculateDPO, calculateDSO } from '@/lib/ccc-engine/calculator';
+import { parseExcelFile, parseExcelWorkbook } from '@/lib/parser/sheetjs';
+import type { ExpectedFileType, ParseResult } from '@/lib/parser/types';
 
 type UploadKey = 'sales' | 'purchase' | 'stock';
 type UploadedFiles = Record<UploadKey, File | null>;
@@ -128,31 +128,7 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
   };
 
   const finishParse = async (parseResult: ParseResult) => {
-    const cccResult = calculateCCCMetrics(parseResult);
-    const companyContext = createCompanyContext();
-    const layer1Candidates = evaluateLayer1(cccResult, companyContext);
-    cccResult.recommendations = buildFallbackRecommendations(layer1Candidates, cccResult, companyContext);
-    onResultsReady(cccResult);
-
-    fetch('/api/recommendations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        cccResult,
-        companyContext,
-        layer1Candidates,
-      }),
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const enrichedData = (await response.json()) as { recommendations?: CCCResult['recommendations'] };
-        if (enrichedData.recommendations?.length) {
-          onResultsReady({ ...cccResult, recommendations: enrichedData.recommendations });
-        }
-      })
-      .catch(() => {
-        onResultsReady(cccResult);
-      });
+    onResultsReady(createCCCResult(parseResult));
   };
 
   return (
@@ -315,12 +291,28 @@ function classifyDroppedFiles(
   return nextFiles;
 }
 
-function createCompanyContext(): CompanyContext {
-  return {
-    fabricTypes: [],
-    buyerTypes: [],
-    month: new Date().getMonth() + 1,
-    revenueRange: 'unknown',
-    dataSource: 'Tally/Excel export',
-  };
+function createCCCResult(parseResult: ParseResult): CCCResult {
+  const periodDays = inferPeriodDays(parseResult);
+  const revenue = parseResult.sales.reduce((sum, invoice) => sum + invoice.amount, 0);
+  const purchaseCOGS = parseResult.purchases.reduce((sum, invoice) => sum + invoice.amount, 0);
+  const cogs = purchaseCOGS > 0 ? purchaseCOGS : revenue * 0.65;
+  const dio = calculateDIO(parseResult.inventory, parseResult.sales, periodDays);
+  const dso = calculateDSO(parseResult.sales, revenue, periodDays);
+  const dpo = calculateDPO(parseResult.purchases, cogs, periodDays);
+
+  return calculateCCC(dio, dso, dpo, periodDays);
+}
+
+function inferPeriodDays(parseResult: ParseResult): number {
+  const timestamps = [...parseResult.sales, ...parseResult.purchases]
+    .map((invoice) => invoice.invoiceDate.getTime())
+    .filter((timestamp) => Number.isFinite(timestamp));
+
+  if (timestamps.length < 2) return 90;
+
+  const rawDays = Math.ceil((Math.max(...timestamps) - Math.min(...timestamps)) / 86400000) + 1;
+
+  if (rawDays <= 30) return 30;
+  if (rawDays <= 60) return 60;
+  return 90;
 }

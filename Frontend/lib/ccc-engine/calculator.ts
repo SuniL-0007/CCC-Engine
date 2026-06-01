@@ -1,144 +1,204 @@
-import { CCCResult, ParseResult } from './types';
+import type { ParsedInventoryItem, ParsedInvoice } from '@/lib/parser/types';
+import benchmarks from './benchmarks.json';
+import type { CCCResult, ComponentResult } from './types';
 
-/**
- * Calculate Days Inventory Outstanding (DIO)
- * DIO = (Average Inventory / COGS) * Number of Days
- */
+const TEXTILE_COGS_RATIO = 0.65;
+
 export function calculateDIO(
-  inventory: number,
-  cogs: number,
-  days: number = 365
-): number {
-  if (cogs === 0) return 0;
-  return (inventory / cogs) * days;
+  inventory: ParsedInventoryItem[],
+  sales: ParsedInvoice[],
+  periodDays: number
+): ComponentResult {
+  const benchmark = benchmarks.textile.dio;
+
+  if (inventory.length === 0) {
+    return createComponentResult(0, benchmark, 0);
+  }
+
+  const avgInventoryValue =
+    inventory.reduce((sum, item) => sum + item.inventoryValue, 0) / inventory.length;
+  const directCOGS = sumDirectCOGS(sales);
+  const totalRevenue = sales.reduce((sum, sale) => sum + sale.amount, 0);
+  const totalCOGS = directCOGS ?? totalRevenue * TEXTILE_COGS_RATIO;
+  const dataCompleteness = directCOGS === null ? 0.8 : 1;
+
+  if (totalCOGS === 0 || periodDays <= 0) {
+    return createComponentResult(0, benchmark, dataCompleteness);
+  }
+
+  return createComponentResult(avgInventoryValue / (totalCOGS / periodDays), benchmark, dataCompleteness);
 }
 
-/**
- * Calculate Days Sales Outstanding (DSO)
- * DSO = (Average Accounts Receivable / Net Sales) * Number of Days
- */
 export function calculateDSO(
-  accountsReceivable: number,
-  sales: number,
-  days: number = 365
-): number {
-  if (sales === 0) return 0;
-  return (accountsReceivable / sales) * days;
+  arInvoices: ParsedInvoice[],
+  revenue: number,
+  periodDays: number
+): ComponentResult {
+  const benchmark = benchmarks.textile.dso;
+
+  if (revenue === 0 || periodDays <= 0) {
+    return createComponentResult(0, benchmark, 0.5);
+  }
+
+  const unpaidInvoices = arInvoices.filter((invoice) => invoice.paymentDate === null);
+  const avgARBalance = unpaidInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+  const dataCompleteness = arInvoices.length > 0 ? 1 : 0.5;
+
+  return createComponentResult(avgARBalance / (revenue / periodDays), benchmark, dataCompleteness);
 }
 
-/**
- * Calculate Days Payable Outstanding (DPO)
- * DPO = (Average Accounts Payable / COGS) * Number of Days
- */
 export function calculateDPO(
-  accountsPayable: number,
+  apInvoices: ParsedInvoice[],
   cogs: number,
-  days: number = 365
-): number {
-  if (cogs === 0) return 0;
-  return (accountsPayable / cogs) * days;
-}
+  periodDays: number
+): ComponentResult {
+  const benchmark = benchmarks.textile.dpo;
 
-/**
- * Calculate Cash Conversion Cycle (CCC)
- * CCC = DIO + DSO - DPO
- */
-export function calculateCCC(dio: number, dso: number, dpo: number): number {
-  return Math.round((dio + dso - dpo) * 100) / 100;
-}
-
-/**
- * Calculate CCC metrics from parse result
- */
-export function calculateCCCMetrics(
-  parseResult: ParseResult,
-  benchmarks: { DIO: number; DSO: number; DPO: number; CCC: number } = {
-    DIO: 38,
-    DSO: 45,
-    DPO: 42,
-    CCC: 41,
+  if (cogs === 0 || periodDays <= 0) {
+    return createComponentResult(0, benchmark, 0.5);
   }
+
+  const outstandingInvoices = apInvoices.filter((invoice) => invoice.paymentDate === null);
+  const avgAPBalance = outstandingInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
+  const dataCompleteness = apInvoices.length > 0 ? 1 : 0.5;
+
+  return createComponentResult(avgAPBalance / (cogs / periodDays), benchmark, dataCompleteness);
+}
+
+export function calculateCCC(
+  dio: ComponentResult,
+  dso: ComponentResult,
+  dpo: ComponentResult,
+  periodDays: number
 ): CCCResult {
-  const periodDays = inferAnalysisPeriodDays(parseResult);
-
-  const totalSales = parseResult.sales.reduce((sum, inv) => sum + inv.amount, 0);
-  const totalPurchases = parseResult.purchases.reduce((sum, inv) => sum + inv.amount, 0);
-  const totalInventory = parseResult.inventory.reduce((sum, item) => sum + item.closingValue, 0);
-
-  const warnings = [...parseResult.warnings];
-  const cogs = totalPurchases > 0 ? totalPurchases : totalSales * 0.7;
-
-  if (totalPurchases === 0 && totalSales > 0) {
-    warnings.push('Purchase data was missing, so COGS was estimated as 70% of sales.');
-  }
-
-  const outstandingAR = parseResult.sales
-    .filter(inv => !inv.paymentDate)
-    .reduce((sum, inv) => sum + inv.amount, 0);
-
-  const outstandingAP = parseResult.purchases
-    .filter(inv => !inv.paymentDate)
-    .reduce((sum, inv) => sum + inv.amount, 0);
-
-  const dio = calculateDIO(totalInventory, cogs, periodDays);
-  const dso = calculateDSO(outstandingAR, totalSales, periodDays);
-  const dpo = calculateDPO(outstandingAP, cogs, periodDays);
-  const ccc = calculateCCC(dio, dso, dpo);
-  const gapDays = Math.round((ccc - benchmarks.CCC) * 100) / 100;
-  const estimatedCashLockedLakhs = estimateCashLockedLakhs(totalSales, periodDays, gapDays);
+  const ccc = dio.value + dso.value - dpo.value;
+  const benchmarkCCC = benchmarks.textile.ccc;
 
   return {
-    dio: {
-      value: Math.round(dio * 100) / 100,
-      trendDelta: 0,
-      benchmark: benchmarks.DIO,
-    },
-    dso: {
-      value: Math.round(dso * 100) / 100,
-      trendDelta: 0,
-      benchmark: benchmarks.DSO,
-    },
-    dpo: {
-      value: Math.round(dpo * 100) / 100,
-      trendDelta: 0,
-      benchmark: benchmarks.DPO,
-    },
+    dio,
+    dso,
+    dpo,
     ccc,
-    benchmarkCCC: benchmarks.CCC,
-    gapDays,
+    benchmarkCCC,
+    gapDays: ccc - benchmarkCCC,
     periodDays,
-    estimatedCashLockedLakhs,
-    summary: {
-      totalSales,
-      totalPurchases,
-      totalInventory,
-      outstandingAR,
-      outstandingAP,
-      cogs,
-    },
-    generatedAt: new Date().toISOString(),
-    warnings,
+    calculatedAt: new Date(),
   };
 }
 
-function inferAnalysisPeriodDays(parseResult: ParseResult): number {
-  const dates = [...parseResult.sales, ...parseResult.purchases]
-    .map((invoice) => invoice.invoiceDate)
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .map((date) => date.getTime());
+function createComponentResult(
+  rawValue: number,
+  benchmark: number,
+  dataCompleteness: number
+): ComponentResult {
+  const value = Number.isFinite(rawValue) ? Math.round(rawValue * 10) / 10 : 0;
 
-  if (dates.length < 2) return 365;
-
-  const min = Math.min(...dates);
-  const max = Math.max(...dates);
-  const days = Math.ceil((max - min) / (24 * 60 * 60 * 1000)) + 1;
-
-  return Math.min(365, Math.max(30, days));
+  return {
+    value,
+    benchmark,
+    gapDays: value - benchmark,
+    trendDelta: 0,
+    dataCompleteness,
+  };
 }
 
-function estimateCashLockedLakhs(totalSales: number, periodDays: number, gapDays: number): number {
-  if (gapDays <= 0 || totalSales <= 0 || periodDays <= 0) return 0;
+function sumDirectCOGS(sales: ParsedInvoice[]): number | null {
+  let totalCOGS = 0;
+  let hasDirectCOGS = false;
 
-  const dailySales = totalSales / periodDays;
-  return Math.round((dailySales * gapDays) / 1000) / 100;
+  sales.forEach((sale) => {
+    if ('cogs' in sale && typeof sale.cogs === 'number' && Number.isFinite(sale.cogs)) {
+      totalCOGS += sale.cogs;
+      hasDirectCOGS = true;
+    }
+  });
+
+  return hasDirectCOGS ? totalCOGS : null;
+}
+
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  (window as Window & { __cccTest?: () => CCCResult }).__cccTest = () => {
+    const mockInventory = [
+      {
+        itemName: 'Cotton Knit',
+        description: 'Cotton Knit',
+        inventoryValue: 500000,
+        closingValue: 500000,
+        period: '2026-Q1',
+      },
+    ];
+    const mockSales = [
+      {
+        id: 'S1',
+        amount: 200000,
+        invoiceDate: new Date('2026-01-01'),
+        paymentDate: new Date('2026-02-01'),
+        dueDate: new Date('2026-02-01'),
+        counterpartyName: 'Buyer A',
+        invoiceNo: null,
+      },
+    ];
+    const mockAR = [
+      {
+        id: 'AR1',
+        amount: 150000,
+        invoiceDate: new Date('2026-01-01'),
+        paymentDate: null,
+        dueDate: new Date('2026-02-01'),
+        counterpartyName: 'Reliance Retail',
+        invoiceNo: null,
+      },
+      {
+        id: 'AR2',
+        amount: 90000,
+        invoiceDate: new Date('2026-02-01'),
+        paymentDate: null,
+        dueDate: new Date('2026-03-01'),
+        counterpartyName: 'Myntra',
+        invoiceNo: null,
+      },
+    ];
+    const mockAP = [
+      {
+        id: 'AP1',
+        amount: 80000,
+        invoiceDate: new Date('2026-01-01'),
+        paymentDate: null,
+        dueDate: new Date('2026-02-15'),
+        counterpartyName: 'Cotton Supplier',
+        invoiceNo: null,
+      },
+    ];
+
+    const dio = calculateDIO(mockInventory, mockSales, 90);
+    const dso = calculateDSO(mockAR, 200000, 90);
+    const dpo = calculateDPO(mockAP, 130000, 90);
+    const result = calculateCCC(dio, dso, dpo, 90);
+
+    console.log('--- CCC ENGINE TEST ---');
+    console.log(
+      `DIO : ${dio.value.toFixed(1)} days | benchmark: ${dio.benchmark} | gap: ${dio.gapDays.toFixed(1)}`
+    );
+    console.log(
+      `DSO : ${dso.value.toFixed(1)} days | benchmark: ${dso.benchmark} | gap: ${dso.gapDays.toFixed(1)}`
+    );
+    console.log(
+      `DPO : ${dpo.value.toFixed(1)} days | benchmark: ${dpo.benchmark} | gap: ${dpo.gapDays.toFixed(1)}`
+    );
+    console.log(
+      `CCC : ${result.ccc.toFixed(1)} days | benchmark: ${result.benchmarkCCC} | gap: ${result.gapDays.toFixed(1)}`
+    );
+    console.log(
+      `Check: DIO(${dio.value.toFixed(1)}) + DSO(${dso.value.toFixed(1)}) - DPO(${dpo.value.toFixed(1)}) = ${(dio.value + dso.value - dpo.value).toFixed(1)}`
+    );
+
+    const { evaluateLayer1 } = require('../recommendations/layer1Rules');
+    const candidates = evaluateLayer1(result);
+    console.log(
+      `Layer 1 fired ${candidates.length} rules:`,
+      candidates.map((candidate: any) => `${candidate.id}(${candidate.title})`)
+    );
+    console.log('--- END TEST ---');
+    return result;
+  };
 }

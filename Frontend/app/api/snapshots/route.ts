@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPrismaClient } from '@/lib/db/prisma';
-import { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
+import type { CCCResult, ComponentResult } from '@/lib/ccc-engine/types';
 import { AuthError, requireSupabaseUser } from '@/lib/auth/supabaseServer';
 
 export async function GET(request: NextRequest) {
@@ -57,30 +57,26 @@ function toCCCResult(snapshot: {
   benchmarkDso: number;
   benchmarkDpo: number;
   benchmarkCcc: number;
-  recommendations: unknown;
   createdAt: Date;
 }): CCCResult {
   return {
-    dio: { value: snapshot.dio, benchmark: snapshot.benchmarkDio, trendDelta: 0 },
-    dso: { value: snapshot.dso, benchmark: snapshot.benchmarkDso, trendDelta: 0 },
-    dpo: { value: snapshot.dpo, benchmark: snapshot.benchmarkDpo, trendDelta: 0 },
+    dio: toComponentResult(snapshot.dio, snapshot.benchmarkDio),
+    dso: toComponentResult(snapshot.dso, snapshot.benchmarkDso),
+    dpo: toComponentResult(snapshot.dpo, snapshot.benchmarkDpo),
     ccc: snapshot.ccc,
     benchmarkCCC: snapshot.benchmarkCcc,
-    gapDays: Math.round((snapshot.ccc - snapshot.benchmarkCcc) * 100) / 100,
+    gapDays: snapshot.ccc - snapshot.benchmarkCcc,
     periodDays: 0,
-    estimatedCashLockedLakhs: 0,
-    summary: {
-      totalSales: 0,
-      totalPurchases: 0,
-      totalInventory: 0,
-      outstandingAR: 0,
-      outstandingAP: 0,
-      cogs: 0,
-    },
-    generatedAt: snapshot.createdAt.toISOString(),
-    warnings: [],
-    recommendations: Array.isArray(snapshot.recommendations)
-      ? (snapshot.recommendations as Recommendation[])
-      : [],
+    calculatedAt: snapshot.createdAt,
+  };
+}
+
+function toComponentResult(value: number, benchmark: number): ComponentResult {
+  return {
+    value,
+    benchmark,
+    gapDays: value - benchmark,
+    trendDelta: 0,
+    dataCompleteness: 1,
   };
 }

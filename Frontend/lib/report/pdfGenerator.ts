@@ -1,25 +1,28 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CCCResult, CompanyContext, Recommendation } from '@/lib/ccc-engine/types';
+import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
+import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
+
+interface ReportContext {
+  companyName?: string;
+  city?: string;
+  dataSource?: string;
+}
 
 export function generateCCCReport(
   result: CCCResult,
-  context: CompanyContext = {
-    fabricTypes: [],
-    buyerTypes: [],
-    month: new Date().getMonth() + 1,
-    revenueRange: 'unknown',
+  context: ReportContext = {
     dataSource: 'Excel/Tally export',
   }
 ): void {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const generatedDate = new Date(result.generatedAt).toLocaleDateString('en-IN');
+  const generatedDate = formatReportDate(result.calculatedAt);
+  const recommendations = evaluateLayer1(result).slice(0, 5);
 
   drawHeader(doc, context, generatedDate);
   drawMetricCards(doc, result);
   drawBenchmarkBanner(doc, result);
-  drawRecommendations(doc, result.recommendations ?? []);
-  drawWarnings(doc, result.warnings);
+  drawRecommendations(doc, recommendations);
   drawFooter(doc, generatedDate);
 
   doc.addPage();
@@ -29,7 +32,7 @@ export function generateCCCReport(
   doc.save(`FabricCash_CCC_Report_${new Date().toISOString().split('T')[0]}.pdf`);
 }
 
-function drawHeader(doc: jsPDF, context: CompanyContext, generatedDate: string): void {
+function drawHeader(doc: jsPDF, context: ReportContext, generatedDate: string): void {
   doc.setFillColor(27, 58, 107);
   doc.rect(0, 0, 210, 34, 'F');
   doc.setTextColor(255, 255, 255);
@@ -89,23 +92,26 @@ function drawBenchmarkBanner(doc: jsPDF, result: CCCResult): void {
   doc.setTextColor(51, 65, 85);
   doc.setFontSize(9);
   doc.text(
-    `Industry benchmark: ${result.benchmarkCCC} days. Gap: ${formatSigned(result.gapDays)} days. Estimated working capital locked: Rs ${result.estimatedCashLockedLakhs.toFixed(1)} lakhs.`,
+    `Industry benchmark: ${result.benchmarkCCC} days. Gap: ${formatSigned(result.gapDays)} days. Analysis period: ${result.periodDays} days.`,
     22,
     147,
     { maxWidth: 164 }
   );
 }
 
-function drawRecommendations(doc: jsPDF, recommendations: Recommendation[]): void {
+function drawRecommendations(doc: jsPDF, recommendations: Layer1Candidate[]): void {
   autoTable(doc, {
     startY: 164,
     head: [['Priority', 'Metric', 'Recommendation', 'Impact']],
-    body: recommendations.map((recommendation) => [
-      recommendation.priority,
-      recommendation.dimension,
-      `${recommendation.title}\n${recommendation.actionSteps.map((step, index) => `${index + 1}. ${step}`).join('\n')}`,
-      `${recommendation.estimatedDaysReduction.toFixed(1)} days\nRs ${recommendation.estimatedCashFreedLakhs.toFixed(1)}L`,
-    ]),
+    body:
+      recommendations.length > 0
+        ? recommendations.map((recommendation) => [
+            recommendation.priority,
+            recommendation.dimension,
+            recommendation.title,
+            `${recommendation.estimatedDaysReduction.toFixed(1)} days`,
+          ])
+        : [['-', '-', 'No Layer 1 rule fired for this result.', '-']],
     styles: { fontSize: 8, cellPadding: 3, valign: 'top' },
     headStyles: { fillColor: [27, 58, 107], textColor: [255, 255, 255] },
     columnStyles: {
@@ -116,21 +122,6 @@ function drawRecommendations(doc: jsPDF, recommendations: Recommendation[]): voi
     },
     margin: { left: 16, right: 16 },
   });
-}
-
-function drawWarnings(doc: jsPDF, warnings: string[]): void {
-  if (warnings.length === 0) return;
-
-  const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 238;
-  const y = Math.min(finalY + 8, 258);
-
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(146, 64, 14);
-  doc.text('Data notes', 16, y);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(75, 85, 99);
-  doc.text(warnings.slice(0, 3).join(' '), 16, y + 6, { maxWidth: 178 });
 }
 
 function drawMethodology(doc: jsPDF): void {
@@ -185,4 +176,8 @@ function drawFooter(doc: jsPDF, generatedDate: string): void {
 
 function formatSigned(value: number): string {
   return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
+}
+
+function formatReportDate(date: Date | string): string {
+  return new Date(date).toLocaleDateString('en-IN');
 }

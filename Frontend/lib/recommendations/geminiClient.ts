@@ -1,23 +1,39 @@
 import { z } from 'zod';
-import {
-  CCCResult,
-  CompanyContext,
-  Recommendation,
-  RecommendationCandidate,
-} from '@/lib/ccc-engine/types';
+import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+export interface CompanyContext {
+  fabricTypes: string[];
+  buyerTypes: string[];
+  month: number;
+  revenueRange: string;
+  companyName?: string;
+  city?: string;
+  dataSource?: string;
+}
+
+export interface Recommendation {
+  id: string;
+  dimension: Layer1Candidate['dimension'];
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  title: string;
+  explanation: string;
+  actionSteps: string[];
+  estimatedDaysReduction: number;
+  estimatedCashFreedLakhs: number;
+}
+
 export interface GeminiRecommendationPayload {
   cccResult: CCCResult;
   companyContext: CompanyContext;
-  layer1Candidates: RecommendationCandidate[];
+  layer1Candidates: Layer1Candidate[];
 }
 
 const RecommendationSchema = z.object({
   id: z.string(),
-  dimension: z.enum(['DIO', 'DSO', 'DPO', 'CCC']),
+  dimension: z.enum(['DIO', 'DSO', 'DPO']),
   priority: z.enum(['HIGH', 'MEDIUM', 'LOW']),
   title: z.string(),
   explanation: z.string(),
@@ -119,7 +135,7 @@ const RESPONSE_SCHEMA = {
           id: { type: 'string', description: 'The id of the original Layer 1 candidate.' },
           dimension: {
             type: 'string',
-            enum: ['DIO', 'DSO', 'DPO', 'CCC'],
+            enum: ['DIO', 'DSO', 'DPO'],
             description: 'The metric this recommendation primarily improves.',
           },
           priority: {

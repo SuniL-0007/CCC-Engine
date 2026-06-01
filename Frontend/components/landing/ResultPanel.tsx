@@ -1,13 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { CCCResult, MetricDimension, Recommendation } from '@/lib/ccc-engine/types';
+import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
 import { generateCCCReport } from '@/lib/report/pdfGenerator';
+import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 import { SignUpModal } from '@/components/landing/SignUpModal';
+
+type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
 
 export function ResultPanel({ result }: { result: CCCResult }) {
   const [showSignUp, setShowSignUp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const recommendations = evaluateLayer1(result);
 
   return (
     <div className="space-y-8">
@@ -54,7 +58,7 @@ export function ResultPanel({ result }: { result: CCCResult }) {
         }`}
       >
         <p className="text-lg font-bold text-slate-950">
-          Rs {result.estimatedCashLockedLakhs.toFixed(1)} lakhs estimated in extra working capital
+          {result.gapDays > 0 ? 'CCC is above the textile benchmark' : 'CCC is within the textile benchmark'}
         </p>
         <p className="mt-2 text-sm text-slate-700">
           Your CCC is {result.ccc.toFixed(1)} days. Industry benchmark: {result.benchmarkCCC} days.
@@ -65,17 +69,6 @@ export function ResultPanel({ result }: { result: CCCResult }) {
         </p>
       </div>
 
-      {result.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Data notes</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5">
-            {result.warnings.slice(0, 4).map((warning) => (
-              <li key={warning}>{warning}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="space-y-4">
         <div>
           <h3 className="text-2xl font-bold text-slate-950">Top Recommendations</h3>
@@ -83,9 +76,9 @@ export function ResultPanel({ result }: { result: CCCResult }) {
             Ranked by estimated cash-cycle impact. Never more than five actions.
           </p>
         </div>
-        {result.recommendations && result.recommendations.length > 0 ? (
+        {recommendations.length > 0 ? (
           <div className="space-y-3">
-            {result.recommendations.slice(0, 5).map((recommendation, index) => (
+            {recommendations.slice(0, 5).map((recommendation, index) => (
               <RecommendationCard
                 key={recommendation.id}
                 recommendation={recommendation}
@@ -173,7 +166,7 @@ function RecommendationCard({
   recommendation,
   rank,
 }: {
-  recommendation: Recommendation;
+  recommendation: Layer1Candidate;
   rank: number;
 }) {
   const colorClass = getPriorityColor(recommendation.priority);
@@ -189,30 +182,23 @@ function RecommendationCard({
         </span>
       </div>
       <h4 className="text-base font-bold text-slate-950">{recommendation.title}</h4>
-      <p className="mt-2 text-sm leading-6 text-slate-700">{recommendation.explanation}</p>
       <div className="mt-3 rounded-lg bg-white/70 p-3 text-sm text-slate-700">
         <span className="font-semibold">Impact:</span>{' '}
-        {recommendation.estimatedDaysReduction.toFixed(1)} days, Rs{' '}
-        {recommendation.estimatedCashFreedLakhs.toFixed(1)}L freed
+        {recommendation.estimatedDaysReduction.toFixed(1)} days estimated CCC reduction
       </div>
-      <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-700">
-        {recommendation.actionSteps.map((step) => (
-          <li key={step}>{step}</li>
-        ))}
-      </ol>
     </div>
   );
 }
 
-function getPriorityColor(priority: Recommendation['priority']): {
+function getPriorityColor(priority: number): {
   panel: string;
   badge: string;
 } {
-  if (priority === 'HIGH') {
+  if (priority >= 8) {
     return { panel: 'border-red-500 bg-red-50', badge: 'bg-red-600' };
   }
 
-  if (priority === 'MEDIUM') {
+  if (priority >= 5) {
     return { panel: 'border-amber-500 bg-amber-50', badge: 'bg-amber-600' };
   }
 
