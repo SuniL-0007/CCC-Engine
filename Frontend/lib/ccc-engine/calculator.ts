@@ -80,7 +80,7 @@ export function calculateCCC(
     dpo,
     ccc,
     benchmarkCCC,
-    gapDays: ccc - benchmarkCCC,
+    gapDays: Math.round(ccc - benchmarkCCC),
     periodDays,
     calculatedAt: new Date(),
   };
@@ -96,7 +96,7 @@ function createComponentResult(
   return {
     value,
     benchmark,
-    gapDays: value - benchmark,
+    gapDays: Math.round(value - benchmark),
     trendDelta: 0,
     dataCompleteness,
   };
