@@ -48,11 +48,11 @@ export function TallyGuide() {
       <div className="text-center">
         <p className="mb-4 text-slate-600">Not on Tally?</p>
         <a
-          href="/templates/fabriccash_template.xlsx"
+          href="/templates/fabriccash_templates.zip"
           download
           className="inline-flex min-h-11 items-center justify-center rounded-lg border-2 border-primary px-6 py-2 font-medium text-primary transition-colors hover:bg-primary hover:text-white"
         >
-          Download Excel Template
+          Download Templates (.zip)
         </a>
       </div>
     </div>

@@ -1,125 +1,145 @@
 'use client';
 
 import { useState } from 'react';
-import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
 import { generateCCCReport } from '@/lib/report/pdfGenerator';
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 import { SignUpModal } from '@/components/landing/SignUpModal';
 
 type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
 
-export function ResultPanel({ result }: { result: CCCResult }) {
+export function ResultPanel({
+  result,
+  recommendations,
+  visible,
+}: {
+  result: CCCResult | null;
+  recommendations?: Recommendation[];
+  visible: boolean;
+}) {
   const [showSignUp, setShowSignUp] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const recommendations = evaluateLayer1(result);
+  const activeRecommendations =
+    recommendations && recommendations.length > 0
+      ? recommendations
+      : result
+      ? evaluateLayer1(result)
+      : [];
 
   return (
-    <div className="space-y-8">
-      {toast && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800">
-          {toast}
-        </div>
-      )}
+    <div
+      className={`overflow-hidden transition-all duration-500 ${
+        visible ? 'opacity-100 h-auto' : 'opacity-0 h-0'
+      }`}
+    >
+      {result ? (
+        <div className="space-y-8">
+          {toast && (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800">
+              {toast}
+            </div>
+          )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <MetricCard
-          label="DIO"
-          value={result.dio.value}
-          benchmark={result.dio.benchmark}
-          direction="lower"
-          definition="Days Inventory Outstanding: how long inventory usually sits before becoming sales."
-        />
-        <MetricCard
-          label="DSO"
-          value={result.dso.value}
-          benchmark={result.dso.benchmark}
-          direction="lower"
-          definition="Days Sales Outstanding: how long customers usually take to pay invoices."
-        />
-        <MetricCard
-          label="DPO"
-          value={result.dpo.value}
-          benchmark={result.dpo.benchmark}
-          direction="higher"
-          definition="Days Payable Outstanding: how long the business takes to pay suppliers."
-        />
-        <MetricCard
-          label="CCC"
-          value={result.ccc}
-          benchmark={result.benchmarkCCC}
-          direction="lower"
-          definition="Cash Conversion Cycle: DIO plus DSO minus DPO."
-        />
-      </div>
-
-      <div
-        className={`rounded-lg border-l-4 p-6 ${
-          result.gapDays > 0 ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50'
-        }`}
-      >
-        <p className="text-lg font-bold text-slate-950">
-          {result.gapDays > 0 ? 'CCC is above the textile benchmark' : 'CCC is within the textile benchmark'}
-        </p>
-        <p className="mt-2 text-sm text-slate-700">
-          Your CCC is {result.ccc.toFixed(1)} days. Industry benchmark: {result.benchmarkCCC} days.
-          Your gap: {formatSigned(result.gapDays)} days.
-        </p>
-        <p className="mt-1 text-xs text-slate-600">
-          Analysis period inferred from uploaded invoices: {result.periodDays} days.
-        </p>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-2xl font-bold text-slate-950">Top Recommendations</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Ranked by estimated cash-cycle impact. Never more than five actions.
-          </p>
-        </div>
-        {recommendations.length > 0 ? (
-          <div className="space-y-3">
-            {recommendations.slice(0, 5).map((recommendation, index) => (
-              <RecommendationCard
-                key={recommendation.id}
-                recommendation={recommendation}
-                rank={index + 1}
-              />
-            ))}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <MetricCard
+              label="DIO"
+              value={result.dio.value}
+              benchmark={result.dio.benchmark}
+              direction="lower"
+              definition="Days Inventory Outstanding: how long inventory usually sits before becoming sales."
+            />
+            <MetricCard
+              label="DSO"
+              value={result.dso.value}
+              benchmark={result.dso.benchmark}
+              direction="lower"
+              definition="Days Sales Outstanding: how long customers usually take to pay invoices."
+            />
+            <MetricCard
+              label="DPO"
+              value={result.dpo.value}
+              benchmark={result.dpo.benchmark}
+              direction="higher"
+              definition="Days Payable Outstanding: how long the business takes to pay suppliers."
+            />
+            <MetricCard
+              label="CCC"
+              value={result.ccc}
+              benchmark={result.benchmarkCCC}
+              direction="lower"
+              definition="Cash Conversion Cycle: DIO plus DSO minus DPO."
+            />
           </div>
-        ) : (
-          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
-            Preparing recommendations...
+
+          <div
+            className={`rounded-lg border-l-4 p-6 ${
+              result.gapDays > 0 ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50'
+            }`}
+          >
+            <p className="text-lg font-bold text-slate-950">
+              {result.gapDays > 0 ? 'CCC is above the textile benchmark' : 'CCC is within the textile benchmark'}
+            </p>
+            <p className="mt-2 text-sm text-slate-700">
+              Your CCC is {result.ccc.toFixed(1)} days. Textile benchmark: {result.benchmarkCCC} days. Estimated Rs {estimateCashLocked(result)} lakhs locked.
+            </p>
+            <p className="mt-1 text-xs text-slate-600">
+              Analysis period inferred from uploaded invoices: {result.periodDays} days.
+            </p>
           </div>
-        )}
-      </div>
 
-      <div className="flex flex-col gap-4 md:flex-row">
-        <button
-          type="button"
-          onClick={() => generateCCCReport(result)}
-          className="btn-primary min-h-11 flex-1"
-        >
-          Download my CCC Report (PDF)
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowSignUp(true)}
-          className="btn-secondary min-h-11 flex-1"
-        >
-          Save Results
-        </button>
-      </div>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-2xl font-bold text-slate-950">Top Recommendations</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Ranked by estimated cash-cycle impact. Never more than five actions.
+              </p>
+            </div>
+            {activeRecommendations.length > 0 ? (
+              <div className="space-y-3">
+                {activeRecommendations.slice(0, 5).map((recommendation, index) => (
+                  <RecommendationCard
+                    key={recommendation.id}
+                    recommendation={recommendation}
+                    rank={index + 1}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
+                Preparing recommendations...
+              </div>
+            )}
+          </div>
 
-      {showSignUp && (
-        <SignUpModal
-          result={result}
-          onClose={() => setShowSignUp(false)}
-          onSaved={(message) => {
-            setToast(message);
-            window.setTimeout(() => setToast(null), 5000);
-          }}
-        />
-      )}
+          <div className="flex flex-col gap-4 md:flex-row">
+            <button
+              type="button"
+              onClick={() => generateCCCReport(result)}
+              className="btn-primary min-h-11 flex-1"
+            >
+              Download my CCC Report (PDF)
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowSignUp(true)}
+              className="btn-secondary min-h-11 flex-1"
+            >
+              Save Results
+            </button>
+          </div>
+
+          {showSignUp && (
+            <SignUpModal
+              result={result}
+              onClose={() => setShowSignUp(false)}
+              onSaved={(message) => {
+                setToast(message);
+                window.setTimeout(() => setToast(null), 5000);
+              }}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -166,7 +186,7 @@ function RecommendationCard({
   recommendation,
   rank,
 }: {
-  recommendation: Layer1Candidate;
+  recommendation: Recommendation;
   rank: number;
 }) {
   const colorClass = getPriorityColor(recommendation.priority);
@@ -182,27 +202,39 @@ function RecommendationCard({
         </span>
       </div>
       <h4 className="text-base font-bold text-slate-950">{recommendation.title}</h4>
-      <div className="mt-3 rounded-lg bg-white/70 p-3 text-sm text-slate-700">
-        <span className="font-semibold">Impact:</span>{' '}
-        {recommendation.estimatedDaysReduction.toFixed(1)} days estimated CCC reduction
+      <p className="mt-2 text-sm leading-6 text-slate-700">{recommendation.explanation}</p>
+      <div className="mt-4 rounded-lg bg-white/70 p-4 text-sm text-slate-700">
+        <p className="font-semibold text-slate-900">Action steps</p>
+        <ol className="mt-2 list-inside list-decimal space-y-2 text-slate-700">
+          {recommendation.actionSteps.map((step, index) => (
+            <li key={index}>{step}</li>
+          ))}
+        </ol>
+      </div>
+      <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
+        <span className="font-semibold">Estimated impact:</span> {recommendation.estimatedDaysReduction.toFixed(1)} days CCC reduction, approximately Rs {recommendation.estimatedCashFreedLakhs.toFixed(1)} lakhs freed.
       </div>
     </div>
   );
 }
 
-function getPriorityColor(priority: number): {
+function getPriorityColor(priority: Recommendation['priority']): {
   panel: string;
   badge: string;
 } {
-  if (priority >= 8) {
+  if (priority === 'HIGH') {
     return { panel: 'border-red-500 bg-red-50', badge: 'bg-red-600' };
   }
 
-  if (priority >= 5) {
+  if (priority === 'MEDIUM') {
     return { panel: 'border-amber-500 bg-amber-50', badge: 'bg-amber-600' };
   }
 
   return { panel: 'border-slate-400 bg-slate-50', badge: 'bg-slate-600' };
+}
+
+function estimateCashLocked(result: CCCResult): number {
+  return Math.max(Math.round(result.gapDays * 0.5 * 10) / 10, 0);
 }
 
 function formatSigned(value: number): string {

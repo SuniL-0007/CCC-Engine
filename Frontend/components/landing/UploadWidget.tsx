@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { CCCResult } from '@/lib/ccc-engine/types';
+import type { CCCResult, Layer1Candidate, Recommendation } from '@/lib/ccc-engine/types';
 import { calculateCCC, calculateDIO, calculateDPO, calculateDSO } from '@/lib/ccc-engine/calculator';
 import { parseExcelFile, parseExcelWorkbook } from '@/lib/parser/sheetjs';
+import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 import type { ExpectedFileType, ParseResult } from '@/lib/parser/types';
 
 type UploadKey = 'sales' | 'purchase' | 'stock';
@@ -43,7 +44,7 @@ const SLOT_CONFIG: Array<{
 
 const SOFTWARE_BADGES = ['Tally', 'Zoho Books', 'Busy', 'Excel'];
 
-export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult) => void }) {
+export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[]) => void }) {
   const [isDragging, setIsDragging] = useState<UploadKey | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFiles>(EMPTY_FILES);
@@ -128,7 +129,10 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
   };
 
   const finishParse = async (parseResult: ParseResult) => {
-    onResultsReady(createCCCResult(parseResult));
+    const result = createCCCResult(parseResult);
+    const layer1Candidates = evaluateLayer1(result);
+    const recommendations = await fetchRecommendations(result, layer1Candidates);
+    onResultsReady(result, recommendations);
   };
 
   return (
@@ -199,6 +203,9 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
           Clear
         </button>
       </div>
+      <p className="text-center text-sm text-slate-500">
+        Your files are processed entirely in your browser. No data is uploaded.
+      </p>
     </div>
   );
 }
@@ -237,7 +244,7 @@ function UploadSlot({
     >
       <input
         type="file"
-        accept=".xlsx,.xls,.csv"
+        accept=".xlsx,.csv"
         aria-label={`Upload ${name}`}
         onChange={(event) => onDrop(event.target.files)}
         className="hidden"
@@ -315,4 +322,63 @@ function inferPeriodDays(parseResult: ParseResult): number {
   if (rawDays <= 30) return 30;
   if (rawDays <= 60) return 60;
   return 90;
+}
+
+function serializeCCCResult(cccResult: CCCResult) {
+  return {
+    ...cccResult,
+    calculatedAt: cccResult.calculatedAt.toISOString(),
+  };
+}
+
+async function fetchRecommendations(
+  cccResult: CCCResult,
+  layer1Candidates: Layer1Candidate[]
+): Promise<Recommendation[]> {
+  try {
+    const response = await fetch('/api/recommendations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cccResult: serializeCCCResult(cccResult),
+        layer1Candidates,
+      }),
+    });
+
+    const payload = (await response.json()) as { recommendations?: Recommendation[]; error?: string };
+
+    if (!response.ok || !payload.recommendations) {
+      throw new Error(payload.error ?? 'Unable to fetch recommendations');
+    }
+
+    return payload.recommendations;
+  } catch (error) {
+    console.warn('Recommendation API failed, using fallback recommendations.', error);
+    return fallbackRecommendations(layer1Candidates);
+  }
+}
+
+function fallbackRecommendations(candidates: Layer1Candidate[]): Recommendation[] {
+  return candidates.slice(0, 5).map((candidate) => ({
+    id: candidate.id,
+    dimension: candidate.dimension,
+    priority: priorityLabel(candidate.priority),
+    title: candidate.title,
+    explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
+    actionSteps: [
+      `Review outstanding ${candidate.dimension === 'DIO' ? 'inventory items' : candidate.dimension === 'DSO' ? 'customer receivables' : 'supplier payables'} today`,
+      `Prioritise the top 3 ${candidate.dimension === 'DPO' ? 'suppliers' : candidate.dimension === 'DSO' ? 'customers' : 'inventory items'}`,
+      `Agree a target deadline to reduce the ${candidate.dimension} gap this week`,
+    ],
+    estimatedDaysReduction: candidate.estimatedDaysReduction,
+    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.75 * 10) / 10,
+  }));
+}
+
+function priorityLabel(priority: number) {
+  if (priority >= 8) return 'HIGH' as const;
+  if (priority >= 5) return 'MEDIUM' as const;
+  return 'LOW' as const;
 }

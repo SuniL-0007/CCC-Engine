@@ -103,10 +103,10 @@ export async function parseExcelWorkbook(file: File): Promise<ParseResult> {
 
 function validateFile(file: File): void {
   const name = file.name.toLowerCase();
-  const isSupported = name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv');
+  const isSupported = name.endsWith('.xlsx') || name.endsWith('.csv');
 
   if (!isSupported) {
-    throw new Error('Upload an Excel or CSV file (.xlsx, .xls, or .csv).');
+    throw new Error('Upload an Excel or CSV file (.xlsx or .csv).');
   }
 
   if (file.size > MAX_FILE_SIZE_BYTES) {

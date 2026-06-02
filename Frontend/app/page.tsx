@@ -7,14 +7,16 @@ import { Navbar } from '@/components/landing/Navbar';
 import { ResultPanel } from '@/components/landing/ResultPanel';
 import { TallyGuide } from '@/components/landing/TallyGuide';
 import { UploadWidget } from '@/components/landing/UploadWidget';
-import { CCCResult } from '@/lib/ccc-engine/types';
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
 
 export default function Home() {
   const [showResults, setShowResults] = useState(false);
   const [cccResult, setCCCResult] = useState<CCCResult | null>(null);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
 
-  const handleResultsReady = (result: CCCResult) => {
+  const handleResultsReady = (result: CCCResult, recommendations: Recommendation[]) => {
     setCCCResult(result);
+    setRecommendations(recommendations);
     setShowResults(true);
     window.setTimeout(() => {
       document.getElementById('result-panel')?.scrollIntoView({ behavior: 'smooth' });
@@ -28,20 +30,24 @@ export default function Home() {
       <section className="relative w-full overflow-hidden bg-white px-4 py-16 md:py-20">
         <div className="absolute inset-0 fabric-grid opacity-70" />
         <div className="relative mx-auto max-w-6xl">
-          <div className="mb-8 text-center">
-            <h1 className="mx-auto max-w-4xl text-4xl font-bold tracking-normal text-primary md:text-6xl">
-              Find out in 60 seconds how much cash is trapped in your textile business.
-            </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg text-slate-700 md:text-xl">
-              Upload your Tally or Zoho Books export. Get your Cash Conversion Cycle instantly.
-            </p>
-          </div>
+          <div className="grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-center">
+            <div>
+              <div className="mb-6">
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-primary">
+                  Textile working capital, simplified
+                </p>
+                <h1 className="mt-4 text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+                  Find out in 60 seconds how much cash is trapped in your textile business.
+                </h1>
+                <p className="mt-5 max-w-xl text-lg leading-8 text-slate-700">
+                  Upload your Tally, Zoho Books or Excel export. We calculate CCC in the browser and give you benchmarked actions fast.
+                </p>
+              </div>
+            </div>
 
-          <div className="mx-auto max-w-4xl rounded-lg border border-slate-200 bg-white/95 p-5 shadow-sm">
-            <UploadWidget onResultsReady={handleResultsReady} />
-            <p className="mt-4 text-center text-sm text-slate-500">
-              Your file is processed in your browser. Nothing is uploaded.
-            </p>
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <UploadWidget onResultsReady={handleResultsReady} />
+            </div>
           </div>
         </div>
       </section>
@@ -52,13 +58,15 @@ export default function Home() {
         </div>
       </section>
 
-      {showResults && cccResult && (
-        <section id="result-panel" className="w-full bg-slate-50 px-4 py-16">
-          <div className="mx-auto max-w-6xl">
-            <ResultPanel result={cccResult} />
-          </div>
-        </section>
-      )}
+      <section id="result-panel" className="w-full bg-slate-50 px-4 py-16">
+        <div className="mx-auto max-w-6xl">
+          <ResultPanel
+            result={cccResult}
+            recommendations={recommendations}
+            visible={showResults}
+          />
+        </div>
+      </section>
 
       <section className="w-full bg-white px-4 py-16">
         <div className="mx-auto max-w-6xl">

@@ -24,3 +24,14 @@ export interface Layer1Candidate {
   title: string;
   estimatedDaysReduction: number;
 }
+
+export interface Recommendation {
+  id: string;
+  dimension: 'DIO' | 'DSO' | 'DPO';
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  title: string;
+  explanation: string;
+  actionSteps: string[];
+  estimatedDaysReduction: number;
+  estimatedCashFreedLakhs: number;
+}
