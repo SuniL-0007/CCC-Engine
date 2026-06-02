@@ -6,7 +6,7 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 export interface CompanyContext {
   fabricTypes: string[];
-  buyerTypes: string[];
+  buyerTypes?: string[];
   month: number;
   revenueRange: string;
   companyName?: string;
@@ -37,13 +37,13 @@ const RecommendationSchema = z.object({
   priority: z.enum(['HIGH', 'MEDIUM', 'LOW']),
   title: z.string(),
   explanation: z.string(),
-  actionSteps: z.array(z.string()).min(1),
+  actionSteps: z.array(z.string()).min(3).max(3),
   estimatedDaysReduction: z.number(),
   estimatedCashFreedLakhs: z.number(),
 });
 
 const GeminiPayloadSchema = z.object({
-  recommendations: z.array(RecommendationSchema).max(5),
+  recommendations: z.array(RecommendationSchema).min(1).max(5),
 });
 
 export async function enrichRecommendationsWithGemini(

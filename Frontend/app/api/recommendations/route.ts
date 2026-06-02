@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import {
-  enrichRecommendationsWithGemini,
-  type Recommendation,
-} from '@/lib/recommendations/geminiClient';
-import type { Layer1Candidate } from '@/lib/ccc-engine/types';
+import { enrichRecommendationsWithGemini } from '@/lib/recommendations/geminiClient';
+import type { Recommendation, Layer1Candidate } from '@/lib/ccc-engine/types';
 
-const MetricSchema = z.object({
+const ComponentResultSchema = z.object({
   value: z.number(),
   benchmark: z.number(),
   gapDays: z.number(),
@@ -14,97 +11,96 @@ const MetricSchema = z.object({
   dataCompleteness: z.number(),
 });
 
-const RecommendationRequestSchema = z.object({
-  cccResult: z.object({
-    dio: MetricSchema,
-    dso: MetricSchema,
-    dpo: MetricSchema,
-    ccc: z.number(),
-    benchmarkCCC: z.number(),
-    gapDays: z.number(),
-    periodDays: z.number(),
-    calculatedAt: z.coerce.date(),
-  }),
-  companyContext: z.object({
-    fabricTypes: z.array(z.string()),
-    buyerTypes: z.array(z.string()),
-    month: z.number(),
-    revenueRange: z.string(),
-    companyName: z.string().optional(),
-    city: z.string().optional(),
-    dataSource: z.string().optional(),
-  }),
-  layer1Candidates: z.array(
-    z.object({
-      id: z.string(),
-      dimension: z.enum(['DIO', 'DSO', 'DPO']),
-      priority: z.number(),
-      title: z.string(),
-      estimatedDaysReduction: z.number(),
-    })
-  ),
+const CCCResultSchema = z.object({
+  dio: ComponentResultSchema,
+  dso: ComponentResultSchema,
+  dpo: ComponentResultSchema,
+  ccc: z.number(),
+  benchmarkCCC: z.number(),
+  gapDays: z.number(),
+  periodDays: z.number(),
+  calculatedAt: z.string(),
 });
 
+const Layer1CandidateSchema = z.object({
+  id: z.string(),
+  dimension: z.enum(['DIO', 'DSO', 'DPO']),
+  priority: z.number(),
+  title: z.string(),
+  estimatedDaysReduction: z.number(),
+});
+
+const CompanyContextSchema = z.object({
+  fabricTypes: z.array(z.string()).optional().default([]),
+  month: z.number().min(1).max(12).optional().default(new Date().getMonth() + 1),
+  revenueRange: z
+    .enum(['under_5cr', '5cr_to_50cr', 'above_50cr'])
+    .optional()
+    .default('5cr_to_50cr'),
+});
+
+const RequestBodySchema = z.object({
+  cccResult: CCCResultSchema,
+  companyContext: CompanyContextSchema.optional().default({}),
+  layer1Candidates: z.array(Layer1CandidateSchema),
+});
+
+function parseRequestBody(request: NextRequest): Promise<unknown> {
+  return request.json();
+}
+
 export async function POST(request: NextRequest) {
+  let body: unknown;
+
   try {
-    const validated = RecommendationRequestSchema.parse(await request.json());
+    body = await parseRequestBody(request);
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
 
-    try {
-      const recommendations = await enrichRecommendationsWithGemini(validated);
-      return NextResponse.json({ recommendations: recommendations.slice(0, 5), source: 'gemini' });
-    } catch (error) {
-      console.info('Recommendation API using deterministic fallback:', error);
-      const recommendations = buildFallbackRecommendations(validated.layer1Candidates);
-
-      return NextResponse.json({ recommendations, source: 'fallback' });
-    }
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Invalid request format', details: error.errors },
-        { status: 400 }
-      );
-    }
-
-    console.error('Recommendation API error:', error);
+  const parsed = RequestBodySchema.safeParse(body);
+  if (!parsed.success) {
     return NextResponse.json(
-      { error: 'Failed to generate recommendations' },
-      { status: 500 }
+      { error: 'Invalid request body', details: parsed.error.flatten() },
+      { status: 400 }
     );
+  }
+
+  const { layer1Candidates } = parsed.data;
+  if (layer1Candidates.length === 0) {
+    return NextResponse.json({ recommendations: [] });
+  }
+
+  try {
+    const recommendations = await enrichRecommendationsWithGemini(parsed.data);
+    return NextResponse.json({ recommendations: recommendations.slice(0, 5), source: 'gemini' });
+  } catch (error) {
+    console.error('[recommendations] Gemini fallback:', error);
+    return NextResponse.json({
+      recommendations: buildFallbackRecommendations(layer1Candidates),
+      source: 'fallback',
+    });
   }
 }
 
 function buildFallbackRecommendations(candidates: Layer1Candidate[]): Recommendation[] {
+  const priorityLabel = (priority: number): Recommendation['priority'] =>
+    priority >= 8 ? 'HIGH' : priority >= 5 ? 'MEDIUM' : 'LOW';
+
   return candidates.slice(0, 5).map((candidate) => ({
     id: candidate.id,
     dimension: candidate.dimension,
-    priority: candidate.priority >= 8 ? 'HIGH' : candidate.priority >= 5 ? 'MEDIUM' : 'LOW',
+    priority: priorityLabel(candidate.priority),
     title: candidate.title,
-    explanation: `${candidate.title} targets the ${candidate.dimension} gap identified by the Layer 1 rule engine.`,
-    actionSteps: getActionSteps(candidate.dimension),
+    explanation:
+      `Your ${candidate.dimension} metric is outside the textile benchmark. ` +
+      `Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
+    actionSteps: [
+      `Review your ${candidate.dimension} data for the past 30 days`,
+      `Identify the top 3 counterparties contributing to this gap`,
+      `Schedule a follow-up with your finance team this week`,
+    ],
     estimatedDaysReduction: candidate.estimatedDaysReduction,
-    estimatedCashFreedLakhs: 0,
+    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.8 * 10) / 10,
   }));
-}
-
-function getActionSteps(dimension: Layer1Candidate['dimension']): string[] {
-  const steps: Record<Layer1Candidate['dimension'], string[]> = {
-    DIO: [
-      'List the oldest or slowest-moving inventory items.',
-      'Pause repeat purchases for overstocked fabric categories.',
-      'Set reorder quantities from recent sales velocity.',
-    ],
-    DSO: [
-      'Create an aging list for unpaid buyer invoices.',
-      'Follow up on the largest overdue balances first.',
-      'Add due-date reminders for all new invoices.',
-    ],
-    DPO: [
-      'Review suppliers paid before due date.',
-      'Move early payments closer to agreed terms.',
-      'Ask key suppliers for longer repeat-order credit terms.',
-    ],
-  };
-
-  return steps[dimension];
 }
