@@ -1,8 +1,8 @@
-'use client';
+"use client"
 
-import Link from 'next/link';
-import { FormEvent, useState } from 'react';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/auth/supabase';
+import Link from 'next/link'
+import { FormEvent, useState } from 'react'
+import { createClient } from '@/lib/auth/supabase'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -10,7 +10,6 @@ export default function LoginPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setMessage(null);
@@ -18,16 +17,10 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      if (isSupabaseConfigured()) {
-        const supabase = getSupabaseBrowserClient();
-        const result = await supabase?.auth.signInWithPassword({ email, password });
-        if (result?.error) throw result.error;
-        setMessage('Signed in. Your dashboard is ready.');
-        return;
-      }
-
-      localStorage.setItem('fabriccash:demo-user', JSON.stringify({ email, signedInAt: new Date().toISOString() }));
-      setMessage('Demo login saved in this browser.');
+      const supabase = createClient()
+      const result = await supabase.auth.signInWithPassword({ email, password })
+      if (result?.error) throw result.error
+      setMessage('Signed in. Your dashboard is ready.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not sign in.');
     } finally {

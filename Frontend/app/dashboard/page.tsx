@@ -1,10 +1,10 @@
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { CCCResult } from '@/lib/ccc-engine/types';
-import { SummaryCards } from '@/components/dashboard/SummaryCards';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/auth/supabase';
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { CCCResult } from '@/lib/ccc-engine/types'
+import { SummaryCards } from '@/components/dashboard/SummaryCards'
+import { createClient } from '@/lib/auth/supabase'
 
 interface LocalSnapshot {
   id: string;
@@ -20,23 +20,21 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const loadSnapshots = async () => {
-      const saved = JSON.parse(localStorage.getItem('fabriccash:snapshots') ?? '[]') as LocalSnapshot[];
-      setSnapshots(saved);
+      const saved = JSON.parse(localStorage.getItem('fabriccash:snapshots') ?? '[]') as LocalSnapshot[]
+      setSnapshots(saved)
 
-      if (!isSupabaseConfigured()) return;
+      const supabase = createClient()
+      const sessionResult = await supabase.auth.getSession()
+      const userId = sessionResult?.data?.session?.user.id
+      const accessToken = sessionResult?.data?.session?.access_token
 
-      const supabase = getSupabaseBrowserClient();
-      const sessionResult = await supabase?.auth.getSession();
-      const userId = sessionResult?.data.session?.user.id;
-      const accessToken = sessionResult?.data.session?.access_token;
-
-      if (!userId || !accessToken) return;
+      if (!userId || !accessToken) return
 
       const response = await fetch(`/api/snapshots?userId=${encodeURIComponent(userId)}`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
-      });
+      })
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? 'Could not load saved snapshots.');

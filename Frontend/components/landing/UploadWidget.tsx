@@ -69,18 +69,11 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
 
         const nextFiles = { ...uploadedFiles, [slotKey]: file };
         setUploadedFiles(nextFiles);
-        if (hasAllFiles(nextFiles)) {
-          await processFiles(nextFiles);
-        }
         return;
       }
 
       const nextFiles = classifyDroppedFiles(files, uploadedFiles, slotKey);
       setUploadedFiles(nextFiles);
-
-      if (hasAllFiles(nextFiles)) {
-        await processFiles(nextFiles);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process files.');
       setIsLoading(false);
@@ -98,7 +91,6 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
       if (!isComplete) return false;
 
       setUploadedFiles({ sales: file, purchase: file, stock: file });
-      await finishParse(parsed);
       return true;
     } finally {
       setIsLoading(false);

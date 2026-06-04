@@ -1,30 +1,43 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient, createServerClient } from '@supabase/ssr'
 
-let browserClient: SupabaseClient | null = null;
-
-export function isSupabaseConfigured(): boolean {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  return Boolean(
-    url &&
-      key &&
-      !url.includes('demo.supabase.co') &&
-      !url.includes('your_') &&
-      !key.includes('demo') &&
-      !key.includes('your_')
-  );
+// ── Browser client (use in React components and client-side code) ──────────
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 }
 
-export function getSupabaseBrowserClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured()) return null;
+// ── Server client (use in Route Handlers and Server Components) ────────────
+export async function createServerClientInstance() {
+  const { cookies } = await import('next/headers')
+  const cookieStore = cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // setAll called from Server Component — safe to ignore
+          }
+        },
+      },
+    }
+  )
+}
 
-  if (!browserClient) {
-    browserClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string
-    );
-  }
-
-  return browserClient;
+// ── Helper: get current user server-side ──────────────────────────────────
+export async function getCurrentUser() {
+  const supabase = await createServerClientInstance()
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error || !user) return null
+  return user
 }

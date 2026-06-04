@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
-import { generateCCCReport } from '@/lib/report/pdfGenerator';
-import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
-import { SignUpModal } from '@/components/landing/SignUpModal';
+import { useState } from 'react'
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types'
+import { generateCCCReport } from '@/lib/report/pdfGenerator'
+import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules'
+import SignUpModal from '@/components/landing/SignUpModal'
 
 type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
 
@@ -17,8 +17,8 @@ export function ResultPanel({
   recommendations?: Recommendation[];
   visible: boolean;
 }) {
-  const [showSignUp, setShowSignUp] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [showSignUp, setShowSignUp] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
   const activeRecommendations =
     recommendations && recommendations.length > 0
       ? recommendations
@@ -124,20 +124,16 @@ export function ResultPanel({
               onClick={() => setShowSignUp(true)}
               className="btn-secondary min-h-11 flex-1"
             >
-              Save Results
+              Save my results
             </button>
           </div>
 
-          {showSignUp && (
-            <SignUpModal
-              result={result}
-              onClose={() => setShowSignUp(false)}
-              onSaved={(message) => {
-                setToast(message);
-                window.setTimeout(() => setToast(null), 5000);
-              }}
-            />
-          )}
+          <SignUpModal
+            isOpen={showSignUp}
+            onClose={() => setShowSignUp(false)}
+            cccResult={result}
+            recommendations={activeRecommendations}
+          />
         </div>
       ) : null}
     </div>

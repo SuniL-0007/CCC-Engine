@@ -1,247 +1,305 @@
-'use client';
+"use client"
 
-import { FormEvent, ReactNode, useState } from 'react';
-import { CCCResult } from '@/lib/ccc-engine/types';
-import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/auth/supabase';
-
-const FABRIC_TYPES = [
-  'Cotton knit',
-  'Polyester blend',
-  'Technical textiles',
-  'Yarn',
-  'Fabric trading',
-];
+import { useState } from 'react'
+import { createClient } from '@/lib/auth/supabase'
+import { toast } from 'sonner'
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types'
 
 interface SignUpModalProps {
-  result: CCCResult;
-  onClose: () => void;
-  onSaved: (message: string) => void;
+  isOpen: boolean
+  onClose: () => void
+  cccResult: CCCResult
+  recommendations: Recommendation[]
 }
 
-export function SignUpModal({ result, onClose, onSaved }: SignUpModalProps) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [city, setCity] = useState('');
-  const [fabricTypes, setFabricTypes] = useState<string[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const FABRIC_TYPES = [
+  { id: 'cotton_knit',        label: 'Cotton knit' },
+  { id: 'polyester_blend',    label: 'Polyester blend' },
+  { id: 'technical_textiles', label: 'Technical textiles' },
+  { id: 'yarn',               label: 'Yarn' },
+  { id: 'fabric_trading',     label: 'Fabric trading' },
+  { id: 'garments',           label: 'Garments' },
+]
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
+export default function SignUpModal({ isOpen, onClose, cccResult, recommendations }: SignUpModalProps) {
+  const [mode, setMode] = useState<'signup' | 'login'>('signup')
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    email: '',
+    password: '',
+    companyName: '',
+    city: '',
+    fabricTypes: [] as string[],
+  })
 
-    if (!email || !password || !companyName || !city) {
-      setError('Email, password, company name, and city are required.');
-      return;
-    }
+  const supabase = createClient()
 
-    setIsSaving(true);
+  if (!isOpen) return null
 
+  function toggleFabricType(id: string) {
+    setForm(prev => ({
+      ...prev,
+      fabricTypes: prev.fabricTypes.includes(id)
+        ? prev.fabricTypes.filter(f => f !== id)
+        : [...prev.fabricTypes, id],
+    }))
+  }
+
+  async function saveSnapshot() {
+    // Try to use existing session
     try {
-      const company = { email, companyName, city, fabricTypes };
-      let userId = `local-${Date.now()}`;
-      let accessToken: string | null = null;
+      const sessionRes = await supabase.auth.getSession()
+      const session = sessionRes?.data?.session ?? null
 
-      if (isSupabaseConfigured()) {
-        const supabase = getSupabaseBrowserClient();
-        const signUpResult = await supabase?.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              company_name: companyName,
-              city,
-              fabric_types: fabricTypes,
+      if (session && session.user) {
+        const payload = {
+          userId: session.user.id,
+          email: session.user.email ?? form.email,
+          company: { name: form.companyName, city: form.city, fabricTypes: form.fabricTypes },
+          cccResult: {
+            dio: {
+              value: cccResult.dio.value,
+              benchmark: cccResult.dio.benchmark,
+              gapDays: cccResult.dio.gapDays,
+              trendDelta: cccResult.dio.trendDelta,
+              dataCompleteness: cccResult.dio.dataCompleteness,
             },
+            dso: {
+              value: cccResult.dso.value,
+              benchmark: cccResult.dso.benchmark,
+              gapDays: cccResult.dso.gapDays,
+              trendDelta: cccResult.dso.trendDelta,
+              dataCompleteness: cccResult.dso.dataCompleteness,
+            },
+            dpo: {
+              value: cccResult.dpo.value,
+              benchmark: cccResult.dpo.benchmark,
+              gapDays: cccResult.dpo.gapDays,
+              trendDelta: cccResult.dpo.trendDelta,
+              dataCompleteness: cccResult.dpo.dataCompleteness,
+            },
+            ccc: cccResult.ccc,
+            benchmarkCCC: cccResult.benchmarkCCC,
+            gapDays: cccResult.gapDays,
+            periodDays: cccResult.periodDays,
+            calculatedAt: cccResult.calculatedAt.toString(),
           },
-        });
-
-        if (signUpResult?.error) throw signUpResult.error;
-        userId = signUpResult?.data.user?.id ?? userId;
-        accessToken = signUpResult?.data.session?.access_token ?? null;
-
-        if (!accessToken) {
-          throw new Error(
-            'Supabase did not return a session. Confirm the email, log in, then save the result again.'
-          );
+          recommendations,
         }
+
+        const res = await fetch('/api/snapshots/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify(payload),
+        })
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(body?.error ?? 'Failed to save snapshot')
+        }
+
+        return
       }
-
-      await saveSnapshot({ userId, accessToken, ...company, result });
-      onSaved(
-        isSupabaseConfigured()
-          ? 'Results saved. You can track your CCC over time.'
-          : 'Results saved in this browser for local testing.'
-      );
-      onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not save your results.');
-    } finally {
-      setIsSaving(false);
+      // ignore and fallback to local
     }
-  };
 
-  const toggleFabricType = (fabricType: string) => {
-    setFabricTypes((current) =>
-      current.includes(fabricType)
-        ? current.filter((item) => item !== fabricType)
-        : [...current, fabricType]
-    );
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="save-results-title"
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl"
-      >
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <h3 id="save-results-title" className="text-2xl font-bold text-slate-950">
-              Save Your Results
-            </h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Store the CCC summary and recommendations, not your raw invoice data.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-          >
-            Close
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Email">
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="input-field"
-                placeholder="you@company.com"
-              />
-            </Field>
-            <Field label="Password">
-              <input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="input-field"
-                placeholder="Minimum 6 characters"
-              />
-            </Field>
-            <Field label="Company Name">
-              <input
-                type="text"
-                value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                className="input-field"
-                placeholder="Fabric mill name"
-              />
-            </Field>
-            <Field label="City">
-              <input
-                type="text"
-                value={city}
-                onChange={(event) => setCity(event.target.value)}
-                className="input-field"
-                placeholder="Surat"
-              />
-            </Field>
-          </div>
-
-          <div>
-            <p className="mb-2 text-sm font-semibold text-slate-800">Fabric Types</p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {FABRIC_TYPES.map((fabricType) => (
-                <label key={fabricType} className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={fabricTypes.includes(fabricType)}
-                    onChange={() => toggleFabricType(fabricType)}
-                    className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
-                  />
-                  {fabricType}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
-            We store only aggregated metrics: DIO, DSO, DPO, CCC, benchmark gaps, and recommendations.
-          </p>
-
-          <div className="flex flex-col gap-3 pt-2 sm:flex-row">
-            <button type="button" onClick={onClose} className="btn-secondary min-h-11 flex-1">
-              Cancel
-            </button>
-            <button type="submit" disabled={isSaving} className="btn-primary min-h-11 flex-1">
-              {isSaving ? 'Saving...' : 'Save Results'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-semibold text-slate-800">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-async function saveSnapshot(payload: {
-  userId: string;
-  accessToken: string | null;
-  email: string;
-  companyName: string;
-  city: string;
-  fabricTypes: string[];
-  result: CCCResult;
-}): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    const existing = JSON.parse(localStorage.getItem('fabriccash:snapshots') ?? '[]') as unknown[];
+    const existing = JSON.parse(localStorage.getItem('fabriccash:snapshots') ?? '[]')
     localStorage.setItem(
       'fabriccash:snapshots',
       JSON.stringify([
-        {
-          id: `local-${Date.now()}`,
-          createdAt: new Date().toISOString(),
-          ...payload,
-        },
+        { id: `local-${Date.now()}`, createdAt: new Date().toISOString(), company: { name: form.companyName, city: form.city, fabricTypes: form.fabricTypes }, cccResult, recommendations },
         ...existing,
       ])
-    );
-    return;
+    )
   }
 
-  const response = await fetch('/api/snapshots/save', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${payload.accessToken}`,
-    },
-    body: JSON.stringify(payload),
-  });
+  async function handleSignUp() {
+    if (!form.companyName.trim()) {
+      toast.error('Please enter your company name')
+      return
+    }
 
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(body?.error ?? 'Server could not save the snapshot.');
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+      })
+      if (error) throw error
+
+      await saveSnapshot()
+
+      toast.success('Results saved! Check your email to verify your account.')
+      onClose()
+    } catch (err: any) {
+      toast.error(err.message ?? 'Sign up failed — please try again')
+    } finally {
+      setLoading(false)
+    }
   }
+
+  async function handleLogin() {
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.password,
+      })
+      if (error) throw error
+
+      await saveSnapshot()
+
+      toast.success('Results saved successfully!')
+      onClose()
+    } catch (err: any) {
+      toast.error(err.message ?? 'Login failed — please try again')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    // Backdrop
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+    >
+      {/* Modal panel */}
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 mx-4">
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl font-bold"
+          aria-label="Close"
+        >
+          ×
+        </button>
+
+        {/* Header */}
+        <h2 className="text-xl font-semibold text-gray-900 mb-1">
+          {mode === 'signup' ? 'Save your CCC results' : 'Welcome back'}
+        </h2>
+        <p className="text-sm text-gray-500 mb-6">
+          {mode === 'signup'
+            ? 'Free forever. No credit card needed.'
+            : 'Sign in to save your results to your account.'}
+        </p>
+
+        {/* Email */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input
+            type="email"
+            value={form.email}
+            onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+            placeholder="you@yourmill.com"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* Password */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <input
+            type="password"
+            value={form.password}
+            onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
+            placeholder="Min 8 characters"
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+        </div>
+
+        {/* Sign-up only fields */}
+        {mode === 'signup' && (
+          <>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Company name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.companyName}
+                onChange={e => setForm(p => ({ ...p, companyName: e.target.value }))}
+                placeholder="e.g. Shree Textiles Pvt Ltd"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <input
+                type="text"
+                value={form.city}
+                onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
+                placeholder="e.g. Surat"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                What do you deal in? (select all that apply)
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {FABRIC_TYPES.map(ft => (
+                  <button
+                    key={ft.id}
+                    type="button"
+                    onClick={() => toggleFabricType(ft.id)}
+                    className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                      form.fabricTypes.includes(ft.id)
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-600 border-gray-300 hover:border-indigo-400'
+                    }`}
+                  >
+                    {ft.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Submit button */}
+        <button
+          onClick={mode === 'signup' ? handleSignUp : handleLogin}
+          disabled={loading || !form.email || !form.password}
+          className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-medium text-sm hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {loading
+            ? 'Saving...'
+            : mode === 'signup'
+            ? 'Create account & save results'
+            : 'Sign in & save results'}
+        </button>
+
+        {/* Mode toggle */}
+        <p className="text-center text-sm text-gray-500 mt-4">
+          {mode === 'signup' ? (
+            <>Already have an account?{' '}
+              <button onClick={() => setMode('login')} className="text-indigo-600 hover:underline">
+                Sign in
+              </button>
+            </>
+          ) : (
+            <>New here?{' '}
+              <button onClick={() => setMode('signup')} className="text-indigo-600 hover:underline">
+                Create account
+              </button>
+            </>
+          )}
+        </p>
+
+        {/* Privacy note */}
+        <p className="text-xs text-gray-400 text-center mt-3">
+          We store only your CCC metrics — not your raw invoice data.
+        </p>
+      </div>
+    </div>
+  )
 }
