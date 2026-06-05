@@ -25,9 +25,12 @@ const CCCResultSchema = z.object({
 const Layer1CandidateSchema = z.object({
   id: z.string(),
   dimension: z.enum(['DIO', 'DSO', 'DPO']),
-  priority: z.number(),
+  priority: z.enum(['HIGH', 'MEDIUM', 'LOW']),
   title: z.string(),
+  explanation: z.string(),
+  actionSteps: z.array(z.string()).length(3),
   estimatedDaysReduction: z.number(),
+  estimatedCashFreedLakhs: z.number(),
 });
 
 const CompanyContextSchema = z.object({
@@ -37,6 +40,8 @@ const CompanyContextSchema = z.object({
     .enum(['under_5cr', '5cr_to_50cr', 'above_50cr'])
     .optional()
     .default('5cr_to_50cr'),
+  city: z.string().optional(),
+  buyerTypes: z.array(z.string()).optional(),
 });
 
 const RequestBodySchema = z.object({
@@ -47,6 +52,38 @@ const RequestBodySchema = z.object({
 
 function parseRequestBody(request: NextRequest): Promise<unknown> {
   return request.json();
+}
+
+// Helper: Convert month number to season label
+function getSeasonLabel(month: number): string {
+  if ([10, 11, 12].includes(month)) return 'peak Diwali/wedding season — high inventory is normal'
+  if ([1, 2, 3].includes(month))    return 'post-season — slow inventory is a red flag'
+  if ([4, 5, 6].includes(month))    return 'summer — moderate demand period'
+  return 'pre-festive buildup period'
+}
+
+// Helper: Estimate cash locked based on revenue scale and CCC gap
+function estimateCashLocked(result: any, revenueRange: string): number {
+  const monthlyRevenue = {
+    'under_5cr':    5_00_00_000 / 12,
+    '5cr_to_50cr':  25_00_00_000 / 12,
+    'above_50cr':   100_00_00_000 / 12,
+  }[revenueRange] ?? 25_00_00_000 / 12
+
+  const dailyRevenue = monthlyRevenue / 30
+  const cashLocked = result.gapDays * dailyRevenue
+  return Math.round(cashLocked / 1_00_000) // convert to lakhs
+}
+
+// Helper: Validate recommendation quality
+function isRecommendationQuality(rec: Recommendation): boolean {
+  // Check explanation is not empty
+  const hasExplanation = rec.explanation && rec.explanation.length > 10 ? true : false
+  // Check action steps are present and specific (more than 3 words each)
+  const hasActionSteps = rec.actionSteps && rec.actionSteps.length === 3 && rec.actionSteps.every(s => s && s.split(' ').length > 3) ? true : false
+  // Check title isn't too long
+  const titleOk = rec.title && rec.title.split(' ').length <= 12 ? true : false
+  return hasExplanation && hasActionSteps && titleOk
 }
 
 export async function POST(request: NextRequest) {
@@ -66,14 +103,52 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { layer1Candidates } = parsed.data;
+  const { layer1Candidates, cccResult, companyContext } = parsed.data;
   if (layer1Candidates.length === 0) {
     return NextResponse.json({ recommendations: [] });
   }
 
+  // Build richer user message for Gemini
+  const userMessage = `
+COMPANY CONTEXT:
+- Fabric types: ${companyContext.fabricTypes.join(', ') || 'not specified'}
+- Current month: ${companyContext.month} (${getSeasonLabel(companyContext.month)})
+- Revenue range: ${companyContext.revenueRange}
+- City: ${companyContext.city || 'not specified'}
+
+CCC METRICS:
+- DIO: ${cccResult.dio.value} days (benchmark: ${cccResult.dio.benchmark} days, gap: ${cccResult.dio.gapDays > 0 ? '+' : ''}${cccResult.dio.gapDays} days)
+- DSO: ${cccResult.dso.value} days (benchmark: ${cccResult.dso.benchmark} days, gap: ${cccResult.dso.gapDays > 0 ? '+' : ''}${cccResult.dso.gapDays} days)  
+- DPO: ${cccResult.dpo.value} days (benchmark: ${cccResult.dpo.benchmark} days, gap: ${cccResult.dpo.gapDays > 0 ? '+' : ''}${cccResult.dpo.gapDays} days)
+- CCC: ${cccResult.ccc} days (benchmark: ${cccResult.benchmarkCCC} days)
+- Estimated cash locked: Rs ${estimateCashLocked(cccResult, companyContext.revenueRange)} lakhs
+
+TREND:
+- DIO trend: ${cccResult.dio.trendDelta > 0 ? 'worsening' : cccResult.dio.trendDelta < 0 ? 'improving' : 'stable'} (${cccResult.dio.trendDelta} days vs last period)
+- DSO trend: ${cccResult.dso.trendDelta > 0 ? 'worsening' : cccResult.dso.trendDelta < 0 ? 'improving' : 'stable'} (${cccResult.dso.trendDelta} days vs last period)
+- DPO trend: ${cccResult.dpo.trendDelta > 0 ? 'improving' : cccResult.dpo.trendDelta < 0 ? 'worsening' : 'stable'} (${cccResult.dpo.trendDelta} days vs last period)
+
+LAYER 1 CANDIDATE RECOMMENDATIONS (re-rank and enrich these):
+${JSON.stringify(layer1Candidates, null, 2)}
+
+Generate the top 5 recommendations for this specific company.
+`;
+
   try {
-    const recommendations = await enrichRecommendationsWithGemini(parsed.data);
-    return NextResponse.json({ recommendations: recommendations.slice(0, 5), source: 'gemini' });
+    const recommendations = await enrichRecommendationsWithGemini(parsed.data, userMessage);
+    
+    // Validate recommendation quality
+    const qualityRecs = recommendations.filter(isRecommendationQuality)
+    if (qualityRecs.length < 3) {
+      // Gemini returned vague answers — use fallback instead
+      console.warn('[recommendations] Low quality Gemini output, using fallback');
+      return NextResponse.json({
+        recommendations: buildFallbackRecommendations(layer1Candidates),
+        source: 'fallback',
+      });
+    }
+    
+    return NextResponse.json({ recommendations: qualityRecs.slice(0, 5), source: 'gemini' });
   } catch (error) {
     console.error('[recommendations] Gemini fallback:', error);
     return NextResponse.json({
@@ -84,23 +159,14 @@ export async function POST(request: NextRequest) {
 }
 
 function buildFallbackRecommendations(candidates: Layer1Candidate[]): Recommendation[] {
-  const priorityLabel = (priority: number): Recommendation['priority'] =>
-    priority >= 8 ? 'HIGH' : priority >= 5 ? 'MEDIUM' : 'LOW';
-
   return candidates.slice(0, 5).map((candidate) => ({
     id: candidate.id,
     dimension: candidate.dimension,
-    priority: priorityLabel(candidate.priority),
+    priority: candidate.priority,
     title: candidate.title,
-    explanation:
-      `Your ${candidate.dimension} metric is outside the textile benchmark. ` +
-      `Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
-    actionSteps: [
-      `Review your ${candidate.dimension} data for the past 30 days`,
-      `Identify the top 3 counterparties contributing to this gap`,
-      `Schedule a follow-up with your finance team this week`,
-    ],
+    explanation: candidate.explanation,
+    actionSteps: candidate.actionSteps,
     estimatedDaysReduction: candidate.estimatedDaysReduction,
-    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.8 * 10) / 10,
+    estimatedCashFreedLakhs: candidate.estimatedCashFreedLakhs,
   }));
 }

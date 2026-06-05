@@ -20,9 +20,12 @@ export interface CCCResult {
 export interface Layer1Candidate {
   id: string;
   dimension: 'DIO' | 'DSO' | 'DPO';
-  priority: number;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
   title: string;
+  explanation: string;
+  actionSteps: string[];
   estimatedDaysReduction: number;
+  estimatedCashFreedLakhs: number;
 }
 
 export interface Recommendation {
