@@ -1,7 +1,7 @@
 'use client';
 
 import { UploadWidget } from '@/components/landing/UploadWidget';
-import { CCCResult } from '@/lib/ccc-engine/types';
+import { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
 
 const STEPS = [
   { step: 1, title: 'Export from Tally', desc: '30 seconds to export the three files' },
@@ -9,7 +9,7 @@ const STEPS = [
   { step: 3, title: 'Get your CCC', desc: 'Metrics, benchmarks, actions, and a PDF report' },
 ];
 
-export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCResult) => void }) {
+export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[]) => void }) {
   return (
     <div className="space-y-12" id="how-it-works">
       <div className="text-center">

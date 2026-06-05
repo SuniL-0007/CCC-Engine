@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next'
 import './globals.css'
-import { Toaster } from 'sonner'
 
 export const metadata: Metadata = {
   title: 'FabricCash - Textile CCC Optimization',
@@ -42,12 +41,6 @@ export default function RootLayout({
       </head>
       <body className="bg-white text-gray-900">
         {children}
-        <Toaster
-          position="bottom-right"
-          toastOptions={{
-            style: { fontFamily: 'inherit' },
-          }}
-        />
       </body>
     </html>
   );

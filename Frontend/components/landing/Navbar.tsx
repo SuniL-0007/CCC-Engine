@@ -2,14 +2,10 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/auth/supabase'
-import type { User } from '@supabase/supabase-js'
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [isScrolled, setIsScrolled] = useState(false)
-  const [user, setUser] = useState<User | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 24)
@@ -17,21 +13,6 @@ export function Navbar() {
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-    })
-
-    return () => sub.subscription.unsubscribe()
-  }, [])
-
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-    setUser(null)
-  }
 
   return (
     <nav
@@ -54,21 +35,6 @@ export function Navbar() {
             <a href="#how-it-works" className="text-sm font-medium text-slate-700 hover:text-primary">
               How it works
             </a>
-
-            {user ? (
-              <>
-                <Link href="/dashboard" className="text-sm font-semibold text-primary hover:underline">
-                  Dashboard
-                </Link>
-                <button onClick={handleSignOut} className="text-sm text-slate-700">
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <Link href="/login" className="text-sm font-semibold text-primary hover:underline">
-                Login
-              </Link>
-            )}
           </div>
 
           <button
@@ -95,35 +61,6 @@ export function Navbar() {
             >
               How it works
             </a>
-
-            {user ? (
-              <>
-                <Link
-                  href="/dashboard"
-                  onClick={() => setIsOpen(false)}
-                  className="rounded-lg px-3 py-3 font-semibold text-primary hover:bg-slate-50"
-                >
-                  Dashboard
-                </Link>
-                <button
-                  onClick={() => {
-                    handleSignOut()
-                    setIsOpen(false)
-                  }}
-                  className="rounded-lg px-3 py-3 text-slate-700 hover:bg-slate-50"
-                >
-                  Sign out
-                </button>
-              </>
-            ) : (
-              <Link
-                href="/login"
-                onClick={() => setIsOpen(false)}
-                className="rounded-lg px-3 py-3 font-semibold text-primary hover:bg-slate-50"
-              >
-                Login
-              </Link>
-            )}
           </div>
         </div>
       )}

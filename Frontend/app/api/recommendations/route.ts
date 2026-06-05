@@ -19,7 +19,7 @@ const CCCResultSchema = z.object({
   benchmarkCCC: z.number(),
   gapDays: z.number(),
   periodDays: z.number(),
-  calculatedAt: z.string(),
+  calculatedAt: z.string().transform(str => new Date(str)),
 });
 
 const Layer1CandidateSchema = z.object({

@@ -1,12 +1,31 @@
 'use client';
 
-import { useState } from 'react'
-import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types'
+import type { CCCResult, Recommendation, Layer1Candidate } from '@/lib/ccc-engine/types'
 import { generateCCCReport } from '@/lib/report/pdfGenerator'
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules'
-import SignUpModal from '@/components/landing/SignUpModal'
 
 type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
+
+// Convert Layer1Candidate to Recommendation with default values
+function convertToRecommendation(candidate: Layer1Candidate): Recommendation {
+  const priorityMap = (p: number): Recommendation['priority'] =>
+    p >= 8 ? 'HIGH' : p >= 5 ? 'MEDIUM' : 'LOW';
+
+  return {
+    id: candidate.id,
+    dimension: candidate.dimension,
+    priority: priorityMap(candidate.priority),
+    title: candidate.title,
+    explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
+    actionSteps: [
+      `Review your ${candidate.dimension} data for the past 30 days`,
+      `Identify the top 3 counterparties contributing to this gap`,
+      `Create an action plan to address the root causes`
+    ],
+    estimatedDaysReduction: candidate.estimatedDaysReduction,
+    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.5 * 10) / 10,
+  };
+}
 
 export function ResultPanel({
   result,
@@ -17,28 +36,20 @@ export function ResultPanel({
   recommendations?: Recommendation[];
   visible: boolean;
 }) {
-  const [showSignUp, setShowSignUp] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
   const activeRecommendations =
     recommendations && recommendations.length > 0
       ? recommendations
       : result
-      ? evaluateLayer1(result)
+      ? evaluateLayer1(result).map(convertToRecommendation)
       : [];
 
   return (
-    <div
-      className={`overflow-hidden transition-all duration-500 ${
+    <div className={`overflow-hidden transition-all duration-500 ${
         visible ? 'opacity-100 h-auto' : 'opacity-0 h-0'
       }`}
     >
       {result ? (
         <div className="space-y-8">
-          {toast && (
-            <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800">
-              {toast}
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <MetricCard
@@ -119,21 +130,7 @@ export function ResultPanel({
             >
               Download my CCC Report (PDF)
             </button>
-            <button
-              type="button"
-              onClick={() => setShowSignUp(true)}
-              className="btn-secondary min-h-11 flex-1"
-            >
-              Save my results
-            </button>
           </div>
-
-          <SignUpModal
-            isOpen={showSignUp}
-            onClose={() => setShowSignUp(false)}
-            cccResult={result}
-            recommendations={activeRecommendations}
-          />
         </div>
       ) : null}
     </div>
@@ -231,8 +228,4 @@ function getPriorityColor(priority: Recommendation['priority']): {
 
 function estimateCashLocked(result: CCCResult): number {
   return Math.max(Math.round(result.gapDays * 0.5 * 10) / 10, 0);
-}
-
-function formatSigned(value: number): string {
-  return value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1);
 }
