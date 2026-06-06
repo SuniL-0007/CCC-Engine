@@ -31,7 +31,6 @@
     "allowImportingTsExtensions": true,
     "noEmitOnError": true,
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": [
         "./*"
