@@ -14,7 +14,7 @@ function convertToRecommendation(candidate: Layer1Candidate): Recommendation {
   return {
     id: candidate.id,
     dimension: candidate.dimension,
-    priority: priorityMap(candidate.priority),
+    priority: priorityMap(Number(candidate.priority)),
     title: candidate.title,
     explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
     actionSteps: [
@@ -40,12 +40,11 @@ export function ResultPanel({
     recommendations && recommendations.length > 0
       ? recommendations
       : result
-      ? evaluateLayer1(result).map(convertToRecommendation)
-      : [];
+        ? evaluateLayer1(result).map(convertToRecommendation)
+        : [];
 
   return (
-    <div className={`overflow-hidden transition-all duration-500 ${
-        visible ? 'opacity-100 h-auto' : 'opacity-0 h-0'
+    <div className={`overflow-hidden transition-all duration-500 ${visible ? 'opacity-100 h-auto' : 'opacity-0 h-0'
       }`}
     >
       {result ? (
@@ -83,9 +82,8 @@ export function ResultPanel({
           </div>
 
           <div
-            className={`rounded-lg border-l-4 p-6 ${
-              result.gapDays > 0 ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50'
-            }`}
+            className={`rounded-lg border-l-4 p-6 ${result.gapDays > 0 ? 'border-red-500 bg-red-50' : 'border-green-500 bg-green-50'
+              }`}
           >
             <p className="text-lg font-bold text-slate-950">
               {result.gapDays > 0 ? 'CCC is above the textile benchmark' : 'CCC is within the textile benchmark'}
@@ -157,9 +155,8 @@ function MetricCard({
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-slate-600">{label}</p>
         <span
-          className={`rounded-full px-2 py-1 text-[11px] font-bold ${
-            isGood ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-          }`}
+          className={`rounded-full px-2 py-1 text-[11px] font-bold ${isGood ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}
         >
           {isGood ? 'Good' : 'Gap'}
         </span>
