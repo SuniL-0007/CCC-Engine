@@ -22,25 +22,25 @@ const SLOT_CONFIG: Array<{
   name: string;
   helper: string;
 }> = [
-  {
-    key: 'sales',
-    expectedType: 'SALES_REGISTER',
-    name: 'Sales Register',
-    helper: 'Customer invoices and due dates',
-  },
-  {
-    key: 'purchase',
-    expectedType: 'PURCHASE_REGISTER',
-    name: 'Purchase Register',
-    helper: 'Vendor bills and payment dates',
-  },
-  {
-    key: 'stock',
-    expectedType: 'STOCK_SUMMARY',
-    name: 'Stock Summary',
-    helper: 'Closing stock value and quantity',
-  },
-];
+    {
+      key: 'sales',
+      expectedType: 'SALES_REGISTER',
+      name: 'Sales Register',
+      helper: 'Customer invoices and due dates',
+    },
+    {
+      key: 'purchase',
+      expectedType: 'PURCHASE_REGISTER',
+      name: 'Purchase Register',
+      helper: 'Vendor bills and payment dates',
+    },
+    {
+      key: 'stock',
+      expectedType: 'STOCK_SUMMARY',
+      name: 'Stock Summary',
+      helper: 'Closing stock value and quantity',
+    },
+  ];
 
 const SOFTWARE_BADGES = ['Tally', 'Zoho Books', 'Busy', 'Excel'];
 
@@ -230,9 +230,8 @@ function UploadSlot({
         onDrop(event.dataTransfer.files);
       }}
       onDragOver={(event) => event.preventDefault()}
-      className={`relative block min-h-40 cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${
-        isDragging ? 'border-primary bg-primary/5' : 'border-slate-300 bg-white hover:border-primary'
-      } ${file ? 'border-green-500 bg-green-50' : ''}`}
+      className={`relative block min-h-40 cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragging ? 'border-primary bg-primary/5' : 'border-slate-300 bg-white hover:border-primary'
+        } ${file ? 'border-green-500 bg-green-50' : ''}`}
     >
       <input
         type="file"
@@ -356,7 +355,7 @@ function fallbackRecommendations(candidates: Layer1Candidate[]): Recommendation[
   return candidates.slice(0, 5).map((candidate) => ({
     id: candidate.id,
     dimension: candidate.dimension,
-    priority: priorityLabel(candidate.priority),
+    priority: priorityLabel(Number(candidate.priority)),
     title: candidate.title,
     explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
     actionSteps: [
