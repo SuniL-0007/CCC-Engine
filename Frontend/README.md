@@ -15,15 +15,14 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
 - ✅ PDF report generation
 - ✅ Free for all users (no paywall)
 
+
 ## Project Structure
 
 ```
 /app                          # Next.js App Router
   /api
     /recommendations          # Layer 2 Gemini AI enrichment
-    /snapshots/save          # Save CCC snapshots to database
-  /login                      # Login page
-  /dashboard                  # User dashboard (future)
+  /dashboard                  # User dashboard
   page.tsx                    # Landing page
   layout.tsx                  # Root layout
   globals.css                 # Global styles
@@ -36,8 +35,8 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
     - TallyGuide
     - HowItWorks
     - Footer
-  /ui                         # shadcn/ui components (future)
-  /dashboard                  # Dashboard components (future)
+  /ui                         # shadcn/ui components
+  /dashboard                  # Dashboard components
 
 /lib
   /parser                     # Excel/CSV file parsing
@@ -52,11 +51,6 @@ FabricCash is an AI-powered working capital optimization tool for textile mills.
     - geminiClient.ts        # Gemini API client
   /report                     # PDF generation
     - pdfGenerator.ts        # jsPDF report builder
-  /auth                       # Authentication
-    - supabase.ts            # Supabase client
-
-/prisma                       # Database schema
-  schema.prisma              # Prisma schema
 
 /public                       # Static assets
   /templates                 # Excel templates
@@ -69,8 +63,6 @@ docker-compose.yml            # Local PostgreSQL setup
 - **Framework**: Next.js 15 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
-- **Database**: PostgreSQL + Prisma
-- **Auth**: Supabase
 - **AI**: Gemini API
 - **File Parsing**: SheetJS (XLSX)
 - **PDF**: jsPDF + jspdf-autotable
@@ -81,9 +73,7 @@ docker-compose.yml            # Local PostgreSQL setup
 ### Prerequisites
 
 - Node.js 18+
-- Docker & Docker Compose
 - Gemini API key
-- Supabase account (for auth)
 
 ### Installation
 
@@ -92,23 +82,13 @@ docker-compose.yml            # Local PostgreSQL setup
    npm install
    ```
 
-2. **Start PostgreSQL**
+2. **Set up environment**
    ```bash
-   npm run db:up
-   ```
-
-3. **Set up environment**
-   ```bash
-   cp .env.example .env.local
+   cp .env .env.local
    # Edit .env.local with your API keys
    ```
 
-4. **Run database migrations**
-   ```bash
-   npm run prisma:migrate
-   ```
-
-5. **Start development server**
+3. **Start development server**
    ```bash
    npm run dev
    ```
@@ -122,11 +102,6 @@ npm run dev              # Start development server
 npm run build            # Build for production
 npm run start            # Start production server
 npm run lint             # Run ESLint
-
-npm run db:up            # Start PostgreSQL
-npm run db:down          # Stop PostgreSQL
-npm run db:studio        # Open Prisma Studio
-npm run prisma:migrate   # Run database migrations
 ```
 
 ## Architecture
@@ -168,19 +143,10 @@ npm test
 
 ## Environment Variables
 
-See `.env.example` for all required variables:
+See `.env` for all required variables:
 
-- `DATABASE_URL`: PostgreSQL connection string
 - `GEMINI_API_KEY`: Gemini API key
 - `GEMINI_MODEL`: Gemini model name, defaults to `gemini-2.5-flash`
-- `NEXT_PUBLIC_SUPABASE_URL`: Supabase project URL
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Supabase anonymous key
-
-## File Format Specifications
-
-### Sales Register
-- Columns: Date, Party Name, Invoice No, Gross Total, Due Date, Payment Date (optional)
-- Used for: DSO calculation, AR analysis
 
 ### Purchase Register
 - Columns: Date, Party Name, Invoice No, Gross Total, Due Date, Payment Date (optional)
