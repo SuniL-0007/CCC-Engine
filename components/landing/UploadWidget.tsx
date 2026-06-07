@@ -42,7 +42,6 @@ const SLOT_CONFIG: Array<{
     },
   ];
 
-const SOFTWARE_BADGES = ['Tally', 'Zoho Books', 'Busy', 'Excel'];
 
 export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[]) => void }) {
   const [isDragging, setIsDragging] = useState<UploadKey | null>(null);
