@@ -128,34 +128,28 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
   };
 
   return (
-    <div data-upload-widget className="space-y-5">
-      <div className="flex flex-wrap justify-center gap-2">
-        {SOFTWARE_BADGES.map((badge) => (
-          <span
-            key={badge}
-            className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600"
-          >
-            {badge}
-          </span>
-        ))}
+    <div data-upload-widget className="rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+      <div className="mb-6 text-center">
+        <h3 className="text-lg font-semibold text-[#0F172A]">Upload your accounting files</h3>
+        <p className="mt-1 text-xs text-[#94A3B8]">Processed entirely in your browser. Nothing is uploaded to any server.</p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           {error}
         </div>
       )}
 
       {isLoading && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-          <div className="flex items-center gap-2">
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="flex items-center justify-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-            Parsing your data in this browser...
+            Parsing your data...
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {SLOT_CONFIG.map((slot) => (
           <UploadSlot
             key={slot.key}
@@ -174,30 +168,33 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
         ))}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row">
+      <div className="mt-6 flex flex-col gap-3">
         <button
           type="button"
           onClick={() => void processFiles(uploadedFiles)}
           disabled={isLoading || !hasAllFiles(uploadedFiles)}
-          className="btn-primary min-h-11 flex-1"
+          className={`w-full rounded-[7px] py-3 text-[13px] font-semibold transition-all ${
+            hasAllFiles(uploadedFiles) && !isLoading
+              ? 'bg-[#2563EB] text-white hover:bg-[#1D4ED8]'
+              : 'bg-[#F1F5F9] text-[#94A3B8] cursor-not-allowed'
+          }`}
         >
-          {isLoading ? 'Processing...' : 'Calculate CCC'}
+          {isLoading ? 'Processing...' : 'Calculate my CCC →'}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            setUploadedFiles(EMPTY_FILES);
-            setError(null);
-          }}
-          disabled={isLoading || uploadedCount === 0}
-          className="btn-secondary min-h-11 sm:w-36"
-        >
-          Clear
-        </button>
+        {uploadedCount > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setUploadedFiles(EMPTY_FILES);
+              setError(null);
+            }}
+            disabled={isLoading}
+            className="text-xs text-[#94A3B8] hover:text-[#475569]"
+          >
+            Clear files
+          </button>
+        )}
       </div>
-      <p className="text-center text-sm text-slate-500">
-        Your files are processed entirely in your browser. No data is uploaded.
-      </p>
     </div>
   );
 }
@@ -221,6 +218,10 @@ function UploadSlot({
   onDragLeave: () => void;
   onDrop: (files: FileList | null) => void;
 }) {
+  const isSales = slotKey === 'sales';
+  const isPurchase = slotKey === 'purchase';
+  const isStock = slotKey === 'stock';
+
   return (
     <label
       onDragEnter={onDragEnter}
@@ -230,8 +231,17 @@ function UploadSlot({
         onDrop(event.dataTransfer.files);
       }}
       onDragOver={(event) => event.preventDefault()}
-      className={`relative block min-h-40 cursor-pointer rounded-lg border-2 border-dashed p-4 text-center transition-colors ${isDragging ? 'border-primary bg-primary/5' : 'border-slate-300 bg-white hover:border-primary'
-        } ${file ? 'border-green-500 bg-green-50' : ''}`}
+      className={`relative flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-xl border p-4 text-center transition-all ${
+        isDragging
+          ? 'border-[#2563EB] bg-[#EFF6FF] ring-2 ring-[#2563EB]/20'
+          : file
+          ? 'border-[#E2E8F0] bg-white'
+          : isSales
+          ? 'border-[#BFDBFE] bg-white hover:border-[#2563EB]'
+          : isPurchase
+          ? 'border-[#FED7AA] bg-[#FFFBEB] hover:border-[#F97316]'
+          : 'border-[#BBF7D0] bg-[#F0FDF4] hover:border-[#22C55E]'
+      }`}
     >
       <input
         type="file"
@@ -241,23 +251,28 @@ function UploadSlot({
         className="hidden"
       />
 
-      <div className="flex h-full flex-col items-center justify-center gap-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-primary">
-          {slotKey === 'stock' ? 'ST' : slotKey === 'sales' ? 'AR' : 'AP'}
-        </div>
-        {file ? (
-          <div className="max-w-full">
-            <p className="truncate text-sm font-semibold text-green-700">{file.name}</p>
-            <p className="text-xs text-slate-600">{(file.size / 1024).toFixed(1)} KB</p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-sm font-semibold text-slate-800">{name}</p>
-            <p className="text-xs text-slate-500">{helper}</p>
-            <p className="mt-2 text-xs font-medium text-primary">Drag here or click</p>
-          </div>
-        )}
+      <div className="mb-2 text-xl">
+        {isSales ? '📊' : isPurchase ? '📋' : '📦'}
       </div>
+      
+      {file ? (
+        <div className="w-full">
+          <p className="truncate text-xs font-semibold text-[#059669]">✓ {file.name}</p>
+        </div>
+      ) : (
+        <div>
+          <p className={`text-[11px] font-semibold ${
+            isSales ? 'text-[#1D4ED8]' : isPurchase ? 'text-[#C2410C]' : 'text-[#15803D]'
+          }`}>
+            {name}
+          </p>
+          <p className={`text-[10px] mt-0.5 ${
+            isSales ? 'text-[#60A5FA]' : isPurchase ? 'text-[#FDBA74]' : 'text-[#86EFAC]'
+          }`}>
+            {helper}
+          </p>
+        </div>
+      )}
     </label>
   );
 }

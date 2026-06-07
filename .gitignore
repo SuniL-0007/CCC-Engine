@@ -14,6 +14,7 @@ build
 
 # Misc
 .DS_Store
+fabriccash_ui_overhaul_plan.html
 *.pem
 *.log
 npm-debug.log*
