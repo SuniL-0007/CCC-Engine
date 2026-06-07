@@ -219,7 +219,6 @@ function UploadSlot({
 }) {
   const isSales = slotKey === 'sales';
   const isPurchase = slotKey === 'purchase';
-  const isStock = slotKey === 'stock';
 
   return (
     <label
