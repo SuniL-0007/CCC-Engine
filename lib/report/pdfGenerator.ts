@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { CCCResult, Layer1Candidate, Recommendation } from '@/lib/ccc-engine/types';
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
 import { estimateCashLockedLakhs } from '@/lib/ccc-engine/cash';
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 
@@ -9,6 +9,11 @@ interface ReportContext {
   city?: string;
   dataSource?: string;
 }
+
+const PAGE_WIDTH = 210;
+const MARGIN_X = 10;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2; // 190
+const PAGE_BREAK_Y = 272; // keep clear of the footer at 285+
 
 // Helper function to convert hex to RGB
 function hexToRgb(hex: string): [number, number, number] {
@@ -21,6 +26,32 @@ function hexToRgb(hex: string): [number, number, number] {
   ];
 }
 
+/**
+ * jsPDF's built-in Helvetica only supports WinAnsi (Latin-1) characters.
+ * Anything outside it (Unicode minus, checkmarks, rupee sign...) renders as
+ * garbage AND corrupts line-width measurement, which breaks text wrapping.
+ */
+function pdfSafe(text: string): string {
+  return text
+    .replace(/−/g, '-')   // − minus sign
+    .replace(/✓|✔/g, '') // ✓ ✔
+    .replace(/₹/g, 'Rs ') // ₹
+    .replace(/⚠/g, '!')   // ⚠
+    .replace(/…/g, '...') // …
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[↑↓]/g, '') // arrows
+    .replace(/[^\x00-\xFF]/g, '');  // drop anything else non-Latin-1
+}
+
+function drawText(doc: jsPDF, text: string, x: number, y: number, options?: Record<string, unknown>): void {
+  doc.text(pdfSafe(text), x, y, options);
+}
+
+function wrap(doc: jsPDF, text: string, maxWidth: number): string[] {
+  return doc.splitTextToSize(pdfSafe(text), maxWidth) as string[];
+}
+
 export function generateCCCReport(
   result: CCCResult,
   recommendations?: Recommendation[],
@@ -28,6 +59,18 @@ export function generateCCCReport(
     dataSource: 'Excel/Tally export',
   }
 ): void {
+  const doc = buildCCCReport(result, recommendations, context);
+  doc.save(`FabricCash_CCC_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+}
+
+/** Builds the report document without saving — also used by tests. */
+export function buildCCCReport(
+  result: CCCResult,
+  recommendations?: Recommendation[],
+  context: ReportContext = {
+    dataSource: 'Excel/Tally export',
+  }
+): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const generatedDate = formatReportDate(result.calculatedAt);
   // Prefer the recommendations shown in the UI (possibly AI-enriched);
@@ -43,7 +86,7 @@ export function generateCCCReport(
   drawGapCallout(doc, result);
   drawRecommendationsSection(doc, reportRecommendations);
 
-  // Page 2: Methodology
+  // Methodology always starts on its own page
   doc.addPage();
   drawMethodologyPage(doc, result);
 
@@ -54,69 +97,48 @@ export function generateCCCReport(
     drawFooter(doc, generatedDate, i, totalPages);
   }
 
-  doc.save(`FabricCash_CCC_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  return doc;
 }
 
 function drawHeaderBlock(doc: jsPDF, context: ReportContext, generatedDate: string): void {
   // Dark navy background
   const [r, g, b] = hexToRgb('#1e3a5f');
   doc.setFillColor(r, g, b);
-  doc.rect(0, 0, 210, 42, 'F');
+  doc.rect(0, 0, PAGE_WIDTH, 42, 'F');
 
   // "FabricCash" title
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(22);
-  doc.text('FabricCash', 15, 18);
+  drawText(doc, 'FabricCash', 15, 18);
 
   // Subtitle
   const [lr, lg, lb] = hexToRgb('#93c5fd');
   doc.setTextColor(lr, lg, lb);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(11);
-  doc.text('Cash Conversion Cycle Report', 15, 27);
+  drawText(doc, 'Cash Conversion Cycle Report', 15, 27);
 
-  // Right-aligned info
+  // Right-aligned info — only show what we actually know
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
   const rightX = 195;
-  const company = context.companyName || 'Guest Analysis';
-  const city = context.city || 'Not provided';
-  doc.text(`${company}, ${city}`, rightX, 27, { align: 'right' });
-  doc.text(`Analysis: ${generatedDate}`, rightX, 33, { align: 'right' });
+  const identity = [context.companyName, context.city].filter(Boolean).join(', ');
+  if (identity) drawText(doc, identity, rightX, 27, { align: 'right' });
+  drawText(doc, `Analysis date: ${generatedDate}`, rightX, identity ? 33 : 30, { align: 'right' });
 }
 
 function drawMetricsBanner(doc: jsPDF, result: CCCResult): void {
   // Light grey background
   doc.setFillColor(241, 245, 249);
-  doc.rect(0, 52, 210, 24, 'F');
+  doc.rect(0, 52, PAGE_WIDTH, 24, 'F');
 
   const blockWidth = 47;
   const blocks = [
-    {
-      label: 'DIO',
-      value: result.dio.value,
-      benchmark: result.dio.benchmark,
-      x: 10,
-    },
-    {
-      label: 'DSO',
-      value: result.dso.value,
-      benchmark: result.dso.benchmark,
-      x: 10 + blockWidth,
-    },
-    {
-      label: 'DPO',
-      value: result.dpo.value,
-      benchmark: result.dpo.benchmark,
-      x: 10 + blockWidth * 2,
-    },
-    {
-      label: 'CCC',
-      value: result.ccc,
-      benchmark: result.benchmarkCCC,
-      x: 10 + blockWidth * 3,
-    },
+    { label: 'DIO', value: result.dio.value, benchmark: result.dio.benchmark, x: 10 },
+    { label: 'DSO', value: result.dso.value, benchmark: result.dso.benchmark, x: 10 + blockWidth },
+    { label: 'DPO', value: result.dpo.value, benchmark: result.dpo.benchmark, x: 10 + blockWidth * 2 },
+    { label: 'CCC', value: result.ccc, benchmark: result.benchmarkCCC, x: 10 + blockWidth * 3 },
   ];
 
   blocks.forEach((block, idx) => {
@@ -124,27 +146,22 @@ function drawMetricsBanner(doc: jsPDF, result: CCCResult): void {
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.text(block.label, block.x + 2, 56);
+    drawText(doc, block.label, block.x + 2, 56);
 
     // Large value
     const gap = block.value - block.benchmark;
-    const isGood =
-      block.label === 'DPO'
-        ? gap >= 0
-        : block.label === 'CCC'
-          ? gap <= 0
-          : gap <= 0;
+    const isGood = block.label === 'DPO' ? gap >= 0 : gap <= 0;
     const [vr, vg, vb] = isGood ? hexToRgb('#16a34a') : hexToRgb('#dc2626');
     doc.setTextColor(vr, vg, vb);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
-    doc.text(block.value.toFixed(1), block.x + 2, 65);
+    drawText(doc, block.value.toFixed(1), block.x + 2, 65);
 
     // Benchmark text
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
-    doc.text(`Benchmark: ${block.benchmark}d`, block.x + 2, 71);
+    drawText(doc, `Benchmark: ${block.benchmark}d`, block.x + 2, 71);
 
     // Separator line (except after last block)
     if (idx < blocks.length - 1) {
@@ -160,78 +177,124 @@ function drawGapCallout(doc: jsPDF, result: CCCResult): void {
   const isGood = result.gapDays <= 0;
   const [br, bg, bb] = isGood ? hexToRgb('#16a34a') : hexToRgb('#dc2626');
 
-  doc.setDrawColor(br, bg, bb);
-  doc.setLineWidth(0.5);
-  doc.rect(10, 82, 190, 16, 'S');
+  const gapText = isGood
+    ? `Your CCC is ${result.ccc.toFixed(1)} days - ${Math.abs(result.gapDays).toFixed(1)} days below the textile industry benchmark of ${result.benchmarkCCC} days.`
+    : `Your CCC is ${result.ccc.toFixed(1)} days - ${result.gapDays.toFixed(1)} days above the textile industry benchmark of ${result.benchmarkCCC} days.`;
+  const cashText = isGood
+    ? 'Your working capital position is ahead of the industry average.'
+    : `Estimated Rs ${estimateCashLockedLakhs(result).toFixed(1)} lakhs locked in working capital.`;
 
-  // Background fill with slight tint
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'bold');
+  const lines = wrap(doc, `${gapText} ${cashText}`, CONTENT_WIDTH - 10);
+  const boxHeight = Math.max(14, lines.length * 4.5 + 8);
+
   if (isGood) {
     doc.setFillColor(240, 253, 244);
   } else {
     doc.setFillColor(254, 242, 242);
   }
-  doc.rect(10, 82, 190, 16, 'F');
-
-  // Text
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10);
-  doc.setTextColor(br, bg, bb);
-
-  const gapText = isGood
-    ? `Your CCC is ${result.ccc.toFixed(1)} days — ${Math.abs(result.gapDays).toFixed(1)} days below the textile industry benchmark of ${result.benchmarkCCC} days.`
-    : `Your CCC is ${result.ccc.toFixed(1)} days — ${result.gapDays.toFixed(1)} days above the textile industry benchmark of ${result.benchmarkCCC} days.`;
-
-  const cashText = isGood
-    ? 'Your working capital position is ahead of the industry average.'
-    : `Estimated Rs ${estimateCashLockedLakhs(result).toFixed(1)} lakhs locked in working capital.`;
+  doc.rect(MARGIN_X, 82, CONTENT_WIDTH, boxHeight, 'F');
+  doc.setDrawColor(br, bg, bb);
+  doc.setLineWidth(0.5);
+  doc.rect(MARGIN_X, 82, CONTENT_WIDTH, boxHeight, 'S');
 
   doc.setTextColor(51, 65, 85);
-  const fullText = `${gapText} ${cashText}`;
-  const lines = doc.splitTextToSize(fullText, 180);
-  doc.setFontSize(9);
-  doc.text(lines, 15, 87);
+  doc.text(lines, 15, 88);
 }
 
-function drawRecommendationsSection(
-  doc: jsPDF,
-  recommendations: Layer1Candidate[]
-): number {
+function drawRecommendationsSection(doc: jsPDF, recommendations: Recommendation[]): void {
   // Title
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(30, 58, 95);
-  doc.text('Top Recommendations', 10, 106);
+  drawText(doc, 'Top Recommendations', MARGIN_X, 110);
 
   // Subtitle
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text('Ranked by estimated cash-cycle impact. Maximum 5 actions.', 10, 112);
+  drawText(doc, 'Ranked by estimated cash-cycle impact. Maximum 5 actions.', MARGIN_X, 115.5);
 
-  let currentY = 118;
-  const cardHeight = 62;
-  const gapBetweenCards = 4;
+  let currentY = 121;
 
-  recommendations.forEach((rec) => {
-    // Check if we need a new page
-    if (currentY + cardHeight > 270) {
+  if (recommendations.length === 0) {
+    doc.setFontSize(9.5);
+    doc.setTextColor(22, 101, 52);
+    drawText(
+      doc,
+      'No urgent actions found - your CCC is within the textile benchmark. Re-run the analysis next month to keep it that way.',
+      MARGIN_X,
+      currentY + 4
+    );
+    return;
+  }
+
+  recommendations.forEach((rec, index) => {
+    const layout = measureRecommendationCard(doc, rec);
+    if (currentY + layout.height > PAGE_BREAK_Y) {
       doc.addPage();
-      currentY = 10;
+      currentY = 16;
     }
-
-    drawRecommendationCard(doc, rec, currentY);
-    currentY += cardHeight + gapBetweenCards;
+    drawRecommendationCard(doc, rec, index + 1, currentY, layout);
+    currentY += layout.height + 4;
   });
-
-  return currentY;
 }
 
-function drawRecommendationCard(doc: jsPDF, rec: Layer1Candidate, y: number): void {
-  const cardX = 10;
-  const cardWidth = 190;
-  const cardHeight = 62;
+interface CardLayout {
+  height: number;
+  titleLines: string[];
+  explanationLines: string[];
+  stepLines: string[][];
+  impactLines: string[];
+}
 
-  // Priority color indicator (left border)
+const CARD_TEXT_X = 6; // offset from card left edge
+const CARD_TEXT_WIDTH = CONTENT_WIDTH - 3 - CARD_TEXT_X - 5; // minus colour bar and right padding
+
+function measureRecommendationCard(doc: jsPDF, rec: Recommendation): CardLayout {
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  const titleLines = wrap(doc, rec.title, CARD_TEXT_WIDTH);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  const explanationLines = wrap(doc, rec.explanation, CARD_TEXT_WIDTH);
+
+  doc.setFontSize(8);
+  const stepLines = rec.actionSteps
+    .slice(0, 3)
+    .map((step, i) => wrap(doc, `${i + 1}. ${step}`, CARD_TEXT_WIDTH - 2));
+
+  const impactText = `${rec.estimatedDaysReduction.toFixed(1)} days CCC reduction - approximately Rs ${rec.estimatedCashFreedLakhs.toFixed(1)} lakhs freed`;
+  const impactLines = wrap(doc, impactText, CARD_TEXT_WIDTH - 28);
+
+  const height =
+    5.5 + // top padding + badge row
+    titleLines.length * 4.6 +
+    1 +
+    explanationLines.length * 3.8 +
+    2.5 + // gap + "Action steps:" label
+    3.8 +
+    stepLines.reduce((sum, lines) => sum + lines.length * 3.6 + 0.6, 0) +
+    2 + // gap before impact
+    impactLines.length * 3.8 +
+    3.5; // bottom padding
+
+  return { height, titleLines, explanationLines, stepLines, impactLines };
+}
+
+function drawRecommendationCard(
+  doc: jsPDF,
+  rec: Recommendation,
+  rank: number,
+  y: number,
+  layout: CardLayout
+): void {
+  const cardX = MARGIN_X;
+  const cardWidth = CONTENT_WIDTH;
+  const cardHeight = layout.height;
+
   const priorityColors: Record<string, string> = {
     HIGH: '#dc2626',
     MEDIUM: '#d97706',
@@ -243,120 +306,117 @@ function drawRecommendationCard(doc: jsPDF, rec: Layer1Candidate, y: number): vo
     LOW: '#f9fafb',
   };
 
-  const [pr, pg, pb] = hexToRgb(priorityColors[rec.priority]);
-  const [bgr, bgg, bgb] = hexToRgb(bgColors[rec.priority]);
+  const [pr, pg, pb] = hexToRgb(priorityColors[rec.priority] ?? priorityColors.LOW);
+  const [bgr, bgg, bgb] = hexToRgb(bgColors[rec.priority] ?? bgColors.LOW);
 
-  // Left border (3mm wide)
+  // Left colour bar
   doc.setFillColor(pr, pg, pb);
   doc.rect(cardX, y, 3, cardHeight, 'F');
 
-  // Card background
+  // Card background + border
   doc.setFillColor(bgr, bgg, bgb);
   doc.rect(cardX + 3, y, cardWidth - 3, cardHeight, 'F');
-
-  // Card border
   const [br, bg, bb] = hexToRgb('#e5e7eb');
   doc.setDrawColor(br, bg, bb);
   doc.setLineWidth(0.3);
   doc.rect(cardX + 3, y, cardWidth - 3, cardHeight, 'S');
 
-  let lineY = y + 5;
+  const textX = cardX + CARD_TEXT_X;
+  let lineY = y + 5.5;
 
-  // Row 1: Priority badge + dimension badge
+  // Badge row: "1. HIGH" + dimension
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(pr, pg, pb);
-  doc.text(`${rec.priority}`, cardX + 6, lineY);
-
-  const [dsr, dsg, dsb] = hexToRgb('#64748b');
-  doc.setTextColor(dsr, dsg, dsb);
+  drawText(doc, `${rank}. ${rec.priority}`, textX, lineY);
+  doc.setTextColor(100, 116, 139);
   doc.setFont('helvetica', 'normal');
-  doc.text(rec.dimension, cardX + 25, lineY);
-
+  drawText(doc, rec.dimension, textX + 22, lineY);
   lineY += 5;
 
-  // Row 2: Title
+  // Title (all lines)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(0, 0, 0);
-  const titleLines = doc.splitTextToSize(rec.title, 170);
-  doc.text(titleLines[0], cardX + 6, lineY);
-  lineY += 5;
+  layout.titleLines.forEach((line) => {
+    doc.text(line, textX, lineY);
+    lineY += 4.6;
+  });
+  lineY += 1;
 
-  // Row 3: Explanation
+  // Explanation (all lines)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   const [exr, exg, exb] = hexToRgb('#374151');
   doc.setTextColor(exr, exg, exb);
-  const explainLines = doc.splitTextToSize(rec.explanation, 170);
-  explainLines.slice(0, 2).forEach((line: string) => {
-    doc.text(line, cardX + 6, lineY);
-    lineY += 3.5;
+  layout.explanationLines.forEach((line) => {
+    doc.text(line, textX, lineY);
+    lineY += 3.8;
   });
+  lineY += 2.5;
 
-  lineY += 1;
-
-  // Row 4: Action steps label
+  // Action steps label
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   const [asr, asg, asb] = hexToRgb('#1e3a5f');
   doc.setTextColor(asr, asg, asb);
-  doc.text('Action steps:', cardX + 6, lineY);
-  lineY += 3.5;
+  drawText(doc, 'Action steps:', textX, lineY);
+  lineY += 3.8;
 
-  // Rows 5-7: Action steps (numbered)
+  // Steps (all lines of each)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(exr, exg, exb);
-  rec.actionSteps.slice(0, 3).forEach((step, idx) => {
-    const stepLines = doc.splitTextToSize(`${idx + 1}. ${step}`, 165);
-    doc.text(stepLines[0], cardX + 6, lineY);
-    lineY += 3.5;
+  layout.stepLines.forEach((lines) => {
+    lines.forEach((line, lineIndex) => {
+      doc.text(line, textX + (lineIndex === 0 ? 0 : 3), lineY);
+      lineY += 3.6;
+    });
+    lineY += 0.6;
   });
+  lineY += 2;
 
-  lineY += 1;
-
-  // Row 8: Estimated impact
+  // Impact
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   doc.setTextColor(asr, asg, asb);
-  doc.text('Estimated impact:', cardX + 6, lineY);
-
+  drawText(doc, 'Estimated impact:', textX, lineY);
   doc.setFont('helvetica', 'normal');
   const [impr, img, imb] = hexToRgb('#16a34a');
   doc.setTextColor(impr, img, imb);
-  const impactText = `${rec.estimatedDaysReduction.toFixed(1)} days CCC reduction — approximately Rs ${rec.estimatedCashFreedLakhs.toFixed(1)} lakhs freed`;
-  doc.text(impactText, cardX + 37, lineY);
+  layout.impactLines.forEach((line, lineIndex) => {
+    doc.text(line, textX + 28, lineY + lineIndex * 3.8);
+  });
 }
 
 function drawMethodologyPage(doc: jsPDF, result: CCCResult): void {
   // Header (smaller than page 1)
   const [r, g, b] = hexToRgb('#1e3a5f');
   doc.setFillColor(r, g, b);
-  doc.rect(0, 0, 210, 20, 'F');
+  doc.rect(0, 0, PAGE_WIDTH, 20, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text('Methodology & Data Notes', 15, 14);
+  drawText(doc, 'Methodology & Data Notes', 15, 14);
 
-  // Methodology table
+  // Methodology table (ASCII-safe: jsPDF's Helvetica cannot render U+2212)
   const definitions = [
     [
       'Cash Conversion Cycle (CCC)',
-      'DIO + DSO − DPO. Lower CCC means cash returns to the business faster. Every day of improvement releases cash trapped in operations.',
+      'DIO + DSO - DPO. Lower CCC means cash returns to the business faster. Every day of improvement releases cash trapped in operations.',
     ],
     [
       'Days Inventory Outstanding (DIO)',
-      'Average days inventory sits before sale. Calculated as (Avg Inventory ÷ COGS) × Days in period. Lower = faster inventory turnover.',
+      'Average days inventory sits before sale. Calculated as (Avg Inventory / COGS) x Days in period. Lower = faster inventory turnover.',
     ],
     [
       'Days Sales Outstanding (DSO)',
-      'Average days to collect payment after sale. Calculated as (Avg AR ÷ Revenue) × Days in period. Lower = faster collections.',
+      'Average days to collect payment after sale. Calculated as (Avg AR / Revenue) x Days in period. Lower = faster collections.',
     ],
     [
       'Days Payable Outstanding (DPO)',
-      'Average days before paying suppliers. Calculated as (Avg AP ÷ COGS) × Days in period. Higher = more time to pay (working capital benefit).',
+      'Average days before paying suppliers. Calculated as (Avg AP / COGS) x Days in period. Higher = more time to pay (working capital benefit).',
     ],
     [
       'Benchmark Source',
@@ -378,19 +438,17 @@ function drawMethodologyPage(doc: jsPDF, result: CCCResult): void {
   });
 
   // Data quality note
-  let noteY = (doc as any).lastAutoTable.finalY + 6;
+  const noteY = (doc as any).lastAutoTable.finalY + 6;
   if (result.dio.dataCompleteness < 0.8) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(220, 38, 38);
-    const noteText = `⚠ Data Completeness Warning: Only ${(result.dio.dataCompleteness * 100).toFixed(0)}% of expected fields were matched during parsing. DIO and CCC calculations may be incomplete.`;
-    const noteLines = doc.splitTextToSize(noteText, 170);
-    doc.text(noteLines, 15, noteY);
-    noteY += noteLines.length * 4;
+    const noteText = `Data Completeness Warning: only ${(result.dio.dataCompleteness * 100).toFixed(0)}% of expected fields were matched during parsing. DIO and CCC calculations may be incomplete.`;
+    doc.text(wrap(doc, noteText, 170), 15, noteY);
   }
 }
 
-function drawFooter(doc: jsPDF, generatedDate: string, pageNum: number, totalPages: number): void { // totalPages used in template literal below
+function drawFooter(doc: jsPDF, generatedDate: string, pageNum: number, totalPages: number): void {
   const y = 287;
 
   // Horizontal line
@@ -404,13 +462,12 @@ function drawFooter(doc: jsPDF, generatedDate: string, pageNum: number, totalPag
   doc.setFontSize(7);
   const [tr, tg, tb] = hexToRgb('#9ca3af');
   doc.setTextColor(tr, tg, tb);
-  doc.text(`Generated by FabricCash · fabriccash.in · For internal planning only · ${generatedDate}`, 15, y + 2);
+  drawText(doc, `Generated by FabricCash - fabriccash.in - For internal planning only - ${generatedDate}`, 15, y + 2);
 
   // Page numbers (right)
-  doc.text(`Page ${pageNum} of ${totalPages}`, 195, y + 2, { align: 'right' });
+  drawText(doc, `Page ${pageNum} of ${totalPages}`, 195, y + 2, { align: 'right' });
 }
 
 function formatReportDate(date: Date | string): string {
-  return new Date(date).toLocaleDateString('en-IN');
+  return new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
-
