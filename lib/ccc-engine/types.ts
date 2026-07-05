@@ -15,6 +15,8 @@ export interface CCCResult {
   gapDays: number;
   periodDays: number;
   calculatedAt: Date;
+  /** Actual daily revenue (in lakhs) derived from the uploaded Sales Register; absent when revenue could not be read. */
+  dailyRevenueLakhs?: number;
 }
 
 export interface Layer1Candidate {

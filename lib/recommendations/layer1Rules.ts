@@ -1,3 +1,4 @@
+import { estimateCashFreedLakhs } from '@/lib/ccc-engine/cash';
 import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
 
 interface RecommendationRule {
@@ -142,11 +143,7 @@ export function evaluateLayer1(cccResult: CCCResult): Layer1Candidate[] {
     .slice(0, 5)
     .map((rule) => {
       const daysReduction = rule.estimatedDays(cccResult);
-      // Estimate cash freed using a simple model: working capital = (DIO + DSO - DPO) * daily sales
-      // For simplicity, estimate daily sales from CCC value and assume 20% of freed days reduces working capital proportionally
-      const dailyRevenue = 5; // Rs lakhs per day (assumption, can be refined)
-      const cashFreedLakhs = (daysReduction * dailyRevenue) / 10;
-      
+
       return {
         id: rule.id,
         dimension: rule.dimension,
@@ -155,7 +152,7 @@ export function evaluateLayer1(cccResult: CCCResult): Layer1Candidate[] {
         explanation: rule.explanation(cccResult),
         actionSteps: rule.actionSteps(cccResult),
         estimatedDaysReduction: daysReduction,
-        estimatedCashFreedLakhs: Math.round(cashFreedLakhs * 10) / 10,
+        estimatedCashFreedLakhs: estimateCashFreedLakhs(daysReduction, cccResult),
       };
     });
 }

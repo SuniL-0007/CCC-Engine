@@ -69,10 +69,15 @@ export function calculateCCC(
   dio: ComponentResult,
   dso: ComponentResult,
   dpo: ComponentResult,
-  periodDays: number
+  periodDays: number,
+  revenue?: number
 ): CCCResult {
   const ccc = dio.value + dso.value - dpo.value;
   const benchmarkCCC = benchmarks.textile.ccc;
+  const dailyRevenueLakhs =
+    revenue !== undefined && Number.isFinite(revenue) && revenue > 0 && periodDays > 0
+      ? Math.round((revenue / periodDays / 100000) * 100) / 100
+      : undefined;
 
   return {
     dio,
@@ -83,6 +88,7 @@ export function calculateCCC(
     gapDays: Math.round(ccc - benchmarkCCC),
     periodDays,
     calculatedAt: new Date(),
+    ...(dailyRevenueLakhs !== undefined ? { dailyRevenueLakhs } : {}),
   };
 }
 

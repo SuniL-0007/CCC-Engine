@@ -20,6 +20,7 @@ const CCCResultSchema = z.object({
   gapDays: z.number(),
   periodDays: z.number(),
   calculatedAt: z.string().transform(str => new Date(str)),
+  dailyRevenueLakhs: z.number().positive().optional(),
 });
 
 const Layer1CandidateSchema = z.object({
@@ -62,8 +63,16 @@ function getSeasonLabel(month: number): string {
   return 'pre-festive buildup period'
 }
 
-// Helper: Estimate cash locked based on revenue scale and CCC gap
-function estimateCashLocked(result: any, revenueRange: string): number {
+// Helper: Estimate cash locked from the CCC gap. Prefers the real daily revenue
+// derived from the uploaded Sales Register; falls back to the revenue-range assumption.
+function estimateCashLocked(
+  result: { gapDays: number; dailyRevenueLakhs?: number },
+  revenueRange: string
+): number {
+  if (result.dailyRevenueLakhs && Number.isFinite(result.dailyRevenueLakhs)) {
+    return Math.round(Math.max(result.gapDays, 0) * result.dailyRevenueLakhs);
+  }
+
   const monthlyRevenue = {
     'under_5cr':    5_00_00_000 / 12,
     '5cr_to_50cr':  25_00_00_000 / 12,
@@ -71,7 +80,7 @@ function estimateCashLocked(result: any, revenueRange: string): number {
   }[revenueRange] ?? 25_00_00_000 / 12
 
   const dailyRevenue = monthlyRevenue / 30
-  const cashLocked = result.gapDays * dailyRevenue
+  const cashLocked = Math.max(result.gapDays, 0) * dailyRevenue
   return Math.round(cashLocked / 1_00_000) // convert to lakhs
 }
 
@@ -137,9 +146,11 @@ Generate the top 5 recommendations for this specific company.
   try {
     const recommendations = await enrichRecommendationsWithGemini(parsed.data, userMessage);
     
-    // Validate recommendation quality
+    // Validate recommendation quality. Gemini can never return more items than
+    // it was given, so scale the bar down when few rules fired.
     const qualityRecs = recommendations.filter(isRecommendationQuality)
-    if (qualityRecs.length < 3) {
+    const minQuality = Math.min(3, layer1Candidates.length)
+    if (qualityRecs.length < minQuality) {
       // Gemini returned vague answers — use fallback instead
       console.warn('[recommendations] Low quality Gemini output, using fallback');
       return NextResponse.json({

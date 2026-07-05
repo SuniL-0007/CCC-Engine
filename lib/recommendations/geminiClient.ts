@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
 
-const DEFAULT_MODEL = 'gemini-2.5-pro';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export interface CompanyContext {

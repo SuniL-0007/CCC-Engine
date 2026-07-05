@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { CCCResult, Layer1Candidate } from '@/lib/ccc-engine/types';
+import type { CCCResult, Layer1Candidate, Recommendation } from '@/lib/ccc-engine/types';
+import { estimateCashLockedLakhs } from '@/lib/ccc-engine/cash';
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 
 interface ReportContext {
@@ -22,19 +23,25 @@ function hexToRgb(hex: string): [number, number, number] {
 
 export function generateCCCReport(
   result: CCCResult,
+  recommendations?: Recommendation[],
   context: ReportContext = {
     dataSource: 'Excel/Tally export',
   }
 ): void {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const generatedDate = formatReportDate(result.calculatedAt);
-  const recommendations = evaluateLayer1(result);
+  // Prefer the recommendations shown in the UI (possibly AI-enriched);
+  // regenerate from the rule engine only when none were passed.
+  const reportRecommendations =
+    recommendations && recommendations.length > 0
+      ? recommendations.slice(0, 5)
+      : evaluateLayer1(result);
 
   // Page 1: Header + Metrics + Gap + Recommendations
   drawHeaderBlock(doc, context, generatedDate);
   drawMetricsBanner(doc, result);
   drawGapCallout(doc, result);
-  drawRecommendationsSection(doc, recommendations);
+  drawRecommendationsSection(doc, reportRecommendations);
 
   // Page 2: Methodology
   doc.addPage();
@@ -171,13 +178,12 @@ function drawGapCallout(doc: jsPDF, result: CCCResult): void {
   doc.setTextColor(br, bg, bb);
 
   const gapText = isGood
-    ? `Your CCC is ${result.ccc.toFixed(1)} days — ${Math.abs(result.gapDays).toFixed(1)} days below the textile industry benchmark of 41 days.`
-    : `Your CCC is ${result.ccc.toFixed(1)} days — ${result.gapDays.toFixed(1)} days above the textile industry benchmark of 41 days.`;
+    ? `Your CCC is ${result.ccc.toFixed(1)} days — ${Math.abs(result.gapDays).toFixed(1)} days below the textile industry benchmark of ${result.benchmarkCCC} days.`
+    : `Your CCC is ${result.ccc.toFixed(1)} days — ${result.gapDays.toFixed(1)} days above the textile industry benchmark of ${result.benchmarkCCC} days.`;
 
-  const cashLocked = (result.gapDays * 5) / 10; // Rough estimate: 5 lakhs daily revenue
   const cashText = isGood
-    ? `Estimated Rs ${Math.abs(cashLocked).toFixed(1)} lakhs freed from working capital.`
-    : `Estimated Rs ${cashLocked.toFixed(1)} lakhs locked in working capital.`;
+    ? 'Your working capital position is ahead of the industry average.'
+    : `Estimated Rs ${estimateCashLockedLakhs(result).toFixed(1)} lakhs locked in working capital.`;
 
   doc.setTextColor(51, 65, 85);
   const fullText = `${gapText} ${cashText}`;
