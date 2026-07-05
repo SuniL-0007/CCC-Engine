@@ -1,11 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { CCCResult, Layer1Candidate, Recommendation } from '@/lib/ccc-engine/types';
 import { calculateCCC, calculateDIO, calculateDPO, calculateDSO } from '@/lib/ccc-engine/calculator';
+import { applyTrends, latestSnapshot, saveSnapshot } from '@/lib/history/snapshots';
 import { parseExcelFile, parseExcelWorkbook } from '@/lib/parser/sheetjs';
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules';
 import type { ExpectedFileType, ParseResult } from '@/lib/parser/types';
+
+export type RecommendationSource = 'gemini' | 'fallback';
 
 type UploadKey = 'sales' | 'purchase' | 'stock';
 type UploadedFiles = Record<UploadKey, File | null>;
@@ -43,11 +46,13 @@ const SLOT_CONFIG: Array<{
   ];
 
 
-export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[]) => void }) {
+export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[], source: RecommendationSource) => void }) {
   const [isDragging, setIsDragging] = useState<UploadKey | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Parsing your data...');
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFiles>(EMPTY_FILES);
   const [error, setError] = useState<string | null>(null);
+  const slowNoticeTimer = useRef<number | null>(null);
   const uploadedCount = useMemo(
     () => Object.values(uploadedFiles).filter(Boolean).length,
     [uploadedFiles]
@@ -100,6 +105,7 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
     if (!hasAllFiles(files)) return;
 
     setIsLoading(true);
+    setLoadingMessage('Parsing your data...');
 
     try {
       const [salesResult, purchaseResult, stockResult] = await Promise.all([
@@ -114,36 +120,57 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
         inventory: stockResult.detectedType === 'STOCK_SUMMARY' ? stockResult.data : [],
         warnings: [...salesResult.warnings, ...purchaseResult.warnings, ...stockResult.warnings],
       });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyse your files.');
     } finally {
+      if (slowNoticeTimer.current !== null) {
+        window.clearTimeout(slowNoticeTimer.current);
+        slowNoticeTimer.current = null;
+      }
       setIsLoading(false);
     }
   };
 
   const finishParse = async (parseResult: ParseResult) => {
-    const result = createCCCResult(parseResult);
+    const validationError = validateParseResult(parseResult);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    const previous = latestSnapshot();
+    const result = applyTrends(createCCCResult(parseResult), previous);
+    saveSnapshot(result);
+
     const layer1Candidates = evaluateLayer1(result);
-    const recommendations = await fetchRecommendations(result, layer1Candidates);
-    onResultsReady(result, recommendations);
+
+    setLoadingMessage('Generating AI recommendations...');
+    slowNoticeTimer.current = window.setTimeout(() => {
+      setLoadingMessage('Taking longer than usual... preparing your recommendations.');
+    }, 8000);
+
+    const { recommendations, source } = await fetchRecommendations(result, layer1Candidates);
+    onResultsReady(result, recommendations, source);
   };
 
   return (
-    <div data-upload-widget className="rounded-2xl border border-[#E2E8F0] bg-white p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+    <div data-upload-widget className="rounded-2xl border border-edge bg-surface p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
       <div className="mb-6 text-center">
-        <h3 className="text-lg font-semibold text-[#0F172A]">Upload your accounting files</h3>
-        <p className="mt-1 text-xs text-[#94A3B8]">Processed entirely in your browser. Nothing is uploaded to any server.</p>
+        <h3 className="text-lg font-semibold text-ink">Upload your accounting files</h3>
+        <p className="mt-1 text-xs text-faint">Processed entirely in your browser. Nothing is uploaded to any server.</p>
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
           {error}
         </div>
       )}
 
       {isLoading && (
-        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
           <div className="flex items-center justify-center gap-2">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-            Parsing your data...
+            {loadingMessage}
           </div>
         </div>
       )}
@@ -175,7 +202,7 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
           className={`w-full rounded-[7px] py-3 text-[13px] font-semibold transition-all ${
             hasAllFiles(uploadedFiles) && !isLoading
               ? 'bg-[#2563EB] text-white hover:bg-[#1D4ED8]'
-              : 'bg-[#F1F5F9] text-[#94A3B8] cursor-not-allowed'
+              : 'bg-surface2 text-faint cursor-not-allowed'
           }`}
         >
           {isLoading ? 'Processing...' : 'Calculate my CCC →'}
@@ -188,7 +215,7 @@ export function UploadWidget({ onResultsReady }: { onResultsReady: (result: CCCR
               setError(null);
             }}
             disabled={isLoading}
-            className="text-xs text-[#94A3B8] hover:text-[#475569]"
+            className="text-xs text-faint hover:text-body"
           >
             Clear files
           </button>
@@ -231,14 +258,14 @@ function UploadSlot({
       onDragOver={(event) => event.preventDefault()}
       className={`relative flex min-h-[120px] cursor-pointer flex-col items-center justify-center rounded-xl border p-4 text-center transition-all ${
         isDragging
-          ? 'border-[#2563EB] bg-[#EFF6FF] ring-2 ring-[#2563EB]/20'
+          ? 'border-[#2563EB] bg-[#EFF6FF] ring-2 ring-[#2563EB]/20 dark:bg-blue-950/40'
           : file
-          ? 'border-[#E2E8F0] bg-white'
+          ? 'border-edge bg-surface'
           : isSales
-          ? 'border-[#BFDBFE] bg-white hover:border-[#2563EB]'
+          ? 'border-[#BFDBFE] bg-surface hover:border-[#2563EB] dark:border-blue-900'
           : isPurchase
-          ? 'border-[#FED7AA] bg-[#FFFBEB] hover:border-[#F97316]'
-          : 'border-[#BBF7D0] bg-[#F0FDF4] hover:border-[#22C55E]'
+          ? 'border-[#FED7AA] bg-[#FFFBEB] hover:border-[#F97316] dark:border-orange-900 dark:bg-orange-950/25'
+          : 'border-[#BBF7D0] bg-[#F0FDF4] hover:border-[#22C55E] dark:border-green-900 dark:bg-green-950/25'
       }`}
     >
       <input
@@ -255,12 +282,12 @@ function UploadSlot({
       
       {file ? (
         <div className="w-full">
-          <p className="truncate text-xs font-semibold text-[#059669]">✓ {file.name}</p>
+          <p className="truncate text-xs font-semibold text-[#059669] dark:text-green-400">✓ {file.name}</p>
         </div>
       ) : (
         <div>
           <p className={`text-[11px] font-semibold ${
-            isSales ? 'text-[#1D4ED8]' : isPurchase ? 'text-[#C2410C]' : 'text-[#15803D]'
+            isSales ? 'text-[#1D4ED8] dark:text-blue-400' : isPurchase ? 'text-[#C2410C] dark:text-orange-400' : 'text-[#15803D] dark:text-green-400'
           }`}>
             {name}
           </p>
@@ -302,6 +329,21 @@ function classifyDroppedFiles(
   return nextFiles;
 }
 
+function validateParseResult(parseResult: ParseResult): string | null {
+  const empty: string[] = [];
+  if (parseResult.sales.length === 0) empty.push('Sales Register');
+  if (parseResult.purchases.length === 0) empty.push('Purchase Register');
+  if (parseResult.inventory.length === 0) empty.push('Stock Summary');
+
+  if (empty.length === 3) {
+    return "We couldn't read any rows from your files. Make sure you're uploading Excel/CSV exports from Tally, Zoho Books, or our templates — not PDFs or scanned copies.";
+  }
+  if (empty.length > 0) {
+    return `We couldn't find any usable rows in your ${empty.join(' and ')}. Check that you exported the right report and date range (try the last 90 days), or download our templates below.`;
+  }
+  return null;
+}
+
 function createCCCResult(parseResult: ParseResult): CCCResult {
   const periodDays = inferPeriodDays(parseResult);
   const revenue = parseResult.sales.reduce((sum, invoice) => sum + invoice.amount, 0);
@@ -311,7 +353,7 @@ function createCCCResult(parseResult: ParseResult): CCCResult {
   const dso = calculateDSO(parseResult.sales, revenue, periodDays);
   const dpo = calculateDPO(parseResult.purchases, cogs, periodDays);
 
-  return calculateCCC(dio, dso, dpo, periodDays);
+  return calculateCCC(dio, dso, dpo, periodDays, revenue);
 }
 
 function inferPeriodDays(parseResult: ParseResult): number {
@@ -338,7 +380,7 @@ function serializeCCCResult(cccResult: CCCResult) {
 async function fetchRecommendations(
   cccResult: CCCResult,
   layer1Candidates: Layer1Candidate[]
-): Promise<Recommendation[]> {
+): Promise<{ recommendations: Recommendation[]; source: RecommendationSource }> {
   try {
     const response = await fetch('/api/recommendations', {
       method: 'POST',
@@ -351,38 +393,23 @@ async function fetchRecommendations(
       }),
     });
 
-    const payload = (await response.json()) as { recommendations?: Recommendation[]; error?: string };
+    const payload = (await response.json()) as {
+      recommendations?: Recommendation[];
+      source?: RecommendationSource;
+      error?: string;
+    };
 
     if (!response.ok || !payload.recommendations) {
       throw new Error(payload.error ?? 'Unable to fetch recommendations');
     }
 
-    return payload.recommendations;
+    return {
+      recommendations: payload.recommendations,
+      source: payload.source === 'gemini' ? 'gemini' : 'fallback',
+    };
   } catch (error) {
-    console.warn('Recommendation API failed, using fallback recommendations.', error);
-    return fallbackRecommendations(layer1Candidates);
+    console.warn('Recommendation API failed, using rule-based recommendations.', error);
+    // Layer 1 candidates already carry rule-specific explanations and action steps.
+    return { recommendations: layer1Candidates.slice(0, 5), source: 'fallback' };
   }
-}
-
-function fallbackRecommendations(candidates: Layer1Candidate[]): Recommendation[] {
-  return candidates.slice(0, 5).map((candidate) => ({
-    id: candidate.id,
-    dimension: candidate.dimension,
-    priority: priorityLabel(Number(candidate.priority)),
-    title: candidate.title,
-    explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
-    actionSteps: [
-      `Review outstanding ${candidate.dimension === 'DIO' ? 'inventory items' : candidate.dimension === 'DSO' ? 'customer receivables' : 'supplier payables'} today`,
-      `Prioritise the top 3 ${candidate.dimension === 'DPO' ? 'suppliers' : candidate.dimension === 'DSO' ? 'customers' : 'inventory items'}`,
-      `Agree a target deadline to reduce the ${candidate.dimension} gap this week`,
-    ],
-    estimatedDaysReduction: candidate.estimatedDaysReduction,
-    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.75 * 10) / 10,
-  }));
-}
-
-function priorityLabel(priority: number) {
-  if (priority >= 8) return 'HIGH' as const;
-  if (priority >= 5) return 'MEDIUM' as const;
-  return 'LOW' as const;
 }

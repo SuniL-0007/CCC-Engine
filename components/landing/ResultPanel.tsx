@@ -1,47 +1,30 @@
 'use client';
 
 import { useState } from 'react';
-import type { CCCResult, Recommendation, Layer1Candidate } from '@/lib/ccc-engine/types'
+import type { CCCResult, Recommendation } from '@/lib/ccc-engine/types'
+import { estimateCashLockedLakhs } from '@/lib/ccc-engine/cash'
 import { generateCCCReport } from '@/lib/report/pdfGenerator'
 import { evaluateLayer1 } from '@/lib/recommendations/layer1Rules'
+import type { RecommendationSource } from '@/components/landing/UploadWidget'
 
 type MetricDimension = 'DIO' | 'DSO' | 'DPO' | 'CCC';
-
-// Convert Layer1Candidate to Recommendation with default values
-function convertToRecommendation(candidate: Layer1Candidate): Recommendation {
-  const priorityMap = (p: number): Recommendation['priority'] =>
-    p >= 8 ? 'HIGH' : p >= 5 ? 'MEDIUM' : 'LOW';
-
-  return {
-    id: candidate.id,
-    dimension: candidate.dimension,
-    priority: priorityMap(Number(candidate.priority)),
-    title: candidate.title,
-    explanation: `Your ${candidate.dimension} metric is outside the textile benchmark. Addressing this could reduce your CCC by approximately ${candidate.estimatedDaysReduction} days.`,
-    actionSteps: [
-      `Review your ${candidate.dimension} data for the past 30 days`,
-      `Identify the top 3 counterparties contributing to this gap`,
-      `Create an action plan to address the root causes`
-    ],
-    estimatedDaysReduction: candidate.estimatedDaysReduction,
-    estimatedCashFreedLakhs: Math.round(candidate.estimatedDaysReduction * 0.5 * 10) / 10,
-  };
-}
 
 export function ResultPanel({
   result,
   recommendations,
+  source = 'fallback',
   visible,
 }: {
   result: CCCResult | null;
   recommendations?: Recommendation[];
+  source?: RecommendationSource;
   visible: boolean;
 }) {
   const activeRecommendations =
     recommendations && recommendations.length > 0
       ? recommendations
       : result
-        ? evaluateLayer1(result).map(convertToRecommendation)
+        ? evaluateLayer1(result)
         : [];
 
   return (
@@ -51,7 +34,7 @@ export function ResultPanel({
       {result ? (
         <div className="space-y-8">
 
-          <div className="flex flex-col md:flex-row items-center justify-between rounded-xl bg-[#0F172A] p-6 text-white shadow-lg">
+          <div className="flex flex-col md:flex-row items-center justify-between rounded-xl border border-transparent bg-[#0F172A] p-6 text-white shadow-lg dark:border-edge">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#94A3B8]">
                 {result.gapDays > 0 ? 'CCC is above benchmark' : 'CCC is within benchmark'}
@@ -63,13 +46,14 @@ export function ResultPanel({
                 </span>
               </div>
               <p className="mt-3 text-[13px] text-[#94A3B8]">
-                Estimated <span className="font-semibold text-white">Rs {estimateCashLocked(result)} lakhs</span> locked. Analysis period: {result.periodDays} days.
+                Estimated <span className="font-semibold text-white">Rs {estimateCashLockedLakhs(result).toFixed(1)} lakhs</span> locked. Analysis period: {result.periodDays} days.
+                {result.dailyRevenueLakhs ? ' Based on the revenue in your Sales Register.' : ''}
               </p>
             </div>
             <div className="mt-6 w-full md:mt-0 md:w-auto">
               <button
                 type="button"
-                onClick={() => generateCCCReport(result)}
+                onClick={() => generateCCCReport(result, activeRecommendations)}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-[7px] border border-[#475569] bg-[#1E293B] px-6 py-3 text-[13px] font-semibold text-white transition-colors hover:bg-[#334155] md:w-auto"
               >
                 <span>Download Report</span>
@@ -83,6 +67,7 @@ export function ResultPanel({
               label="DIO"
               value={result.dio.value}
               benchmark={result.dio.benchmark}
+              trendDelta={result.dio.trendDelta}
               direction="lower"
               definition="Days Inventory Outstanding: how long inventory usually sits before becoming sales."
             />
@@ -90,6 +75,7 @@ export function ResultPanel({
               label="DSO"
               value={result.dso.value}
               benchmark={result.dso.benchmark}
+              trendDelta={result.dso.trendDelta}
               direction="lower"
               definition="Days Sales Outstanding: how long customers usually take to pay invoices."
             />
@@ -97,6 +83,7 @@ export function ResultPanel({
               label="DPO"
               value={result.dpo.value}
               benchmark={result.dpo.benchmark}
+              trendDelta={result.dpo.trendDelta}
               direction="higher"
               definition="Days Payable Outstanding: how long the business takes to pay suppliers."
             />
@@ -104,6 +91,7 @@ export function ResultPanel({
               label="CCC"
               value={result.ccc}
               benchmark={result.benchmarkCCC}
+              trendDelta={result.dio.trendDelta + result.dso.trendDelta - result.dpo.trendDelta}
               direction="lower"
               definition="Cash Conversion Cycle: DIO plus DSO minus DPO."
               isSummary
@@ -112,8 +100,24 @@ export function ResultPanel({
 
           <div className="space-y-4">
             <div>
-              <h3 className="text-2xl font-bold text-slate-950">Top Recommendations</h3>
-              <p className="mt-1 text-sm text-slate-600">
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-2xl font-bold text-ink">Top Recommendations</h3>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                    source === 'gemini'
+                      ? 'border border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8] dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-400'
+                      : 'border border-edge bg-surface2 text-body'
+                  }`}
+                  title={
+                    source === 'gemini'
+                      ? 'Personalised by AI using your exact numbers and textile industry context.'
+                      : 'Generated instantly from textile industry rules. AI personalisation was unavailable for this run.'
+                  }
+                >
+                  {source === 'gemini' ? '✦ AI-personalised' : 'Instant rule-based'}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-body">
                 Ranked by estimated cash-cycle impact. Never more than five actions.
               </p>
             </div>
@@ -128,8 +132,8 @@ export function ResultPanel({
                 ))}
               </div>
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                Preparing recommendations...
+              <div className="rounded-lg border border-[#BBF7D0] bg-[#F0FDF4] p-4 text-sm text-[#15803D] dark:border-green-900 dark:bg-green-950/30 dark:text-green-400">
+                No urgent actions found — your CCC is within the textile benchmark. Re-run the analysis next month to keep it that way.
               </div>
             )}
           </div>
@@ -143,6 +147,7 @@ function MetricCard({
   label,
   value,
   benchmark,
+  trendDelta,
   direction,
   definition,
   isSummary = false,
@@ -150,6 +155,7 @@ function MetricCard({
   label: MetricDimension;
   value: number;
   benchmark: number;
+  trendDelta: number;
   direction: 'lower' | 'higher';
   definition: string;
   isSummary?: boolean;
@@ -158,25 +164,36 @@ function MetricCard({
   const gap = Math.abs(value - benchmark);
   const gapText = isGood ? `−${gap.toFixed(0)}d ✓` : `+${gap.toFixed(0)}d ↑`;
   const progressPercent = Math.min((value / (benchmark * 2)) * 100, 100);
+  // For DIO/DSO/CCC a rising value is bad; for DPO a rising value is good.
+  const trendIsGood = direction === 'lower' ? trendDelta < 0 : trendDelta > 0;
+  const hasTrend = trendDelta !== 0;
 
   return (
-    <div className={`group relative rounded-[10px] border ${isSummary ? 'border-red-200 bg-[#FFF5F5]' : 'border-[#E2E8F0] bg-white'} p-5 shadow-sm ${isSummary ? 'col-span-2 lg:col-span-2' : 'col-span-1 lg:col-span-1'}`}>
-      <div className="mb-3">
-        <p className="text-[11px] font-semibold text-[#94A3B8]">{label}</p>
+    <div className={`group relative rounded-[10px] border ${isSummary ? 'border-red-200 bg-[#FFF5F5] dark:border-red-900 dark:bg-red-950/25' : 'border-edge bg-surface'} p-5 shadow-sm ${isSummary ? 'col-span-2 lg:col-span-2' : 'col-span-1 lg:col-span-1'}`}>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-faint">{label}</p>
+        {hasTrend && (
+          <span
+            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${trendIsGood ? 'bg-[#F0FDF4] text-[#15803D] dark:bg-green-950/40 dark:text-green-400' : 'bg-[#FEF2F2] text-[#DC2626] dark:bg-red-950/40 dark:text-red-400'}`}
+            title="Change since your previous analysis in this browser"
+          >
+            {trendDelta > 0 ? '↑' : '↓'} {Math.abs(trendDelta).toFixed(1)}d vs last run
+          </span>
+        )}
       </div>
-      <p className={`text-[32px] font-bold leading-none ${isGood ? 'text-[#059669]' : 'text-[#DC2626]'}`}>
-        {value.toFixed(1)}<span className="text-[14px] font-normal text-[#94A3B8]">d</span>
+      <p className={`text-[32px] font-bold leading-none ${isGood ? 'text-[#059669] dark:text-green-400' : 'text-[#DC2626] dark:text-red-400'}`}>
+        {value.toFixed(1)}<span className="text-[14px] font-normal text-faint">d</span>
       </p>
-      <p className="mt-2 text-[10px] text-[#94A3B8]">
-        Avg: {benchmark}d · <span className={isGood ? 'text-[#059669] font-medium' : 'text-[#DC2626] font-medium'}>{gapText}</span>
+      <p className="mt-2 text-[10px] text-faint">
+        Avg: {benchmark}d · <span className={isGood ? 'text-[#059669] font-medium dark:text-green-400' : 'text-[#DC2626] font-medium dark:text-red-400'}>{gapText}</span>
       </p>
-      <div className="mt-4 h-[3px] w-full rounded-full bg-[#E2E8F0]">
-        <div 
-          className={`h-full rounded-full ${isGood ? 'bg-[#059669]' : 'bg-[#DC2626]'}`} 
-          style={{ width: `${progressPercent}%` }} 
+      <div className="mt-4 h-[3px] w-full rounded-full bg-edge">
+        <div
+          className={`h-full rounded-full ${isGood ? 'bg-[#059669]' : 'bg-[#DC2626]'}`}
+          style={{ width: `${progressPercent}%` }}
         />
       </div>
-      <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden w-56 -translate-x-1/2 rounded-lg bg-slate-950 px-3 py-2 text-xs text-white shadow-lg group-hover:block">
+      <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden w-56 -translate-x-1/2 rounded-lg bg-slate-950 px-3 py-2 text-xs text-white shadow-lg dark:bg-slate-800 group-hover:block">
         {definition}
       </div>
     </div>
@@ -194,41 +211,41 @@ function RecommendationCard({
   const priorityColor = recommendation.priority === 'HIGH' ? '#DC2626' : recommendation.priority === 'MEDIUM' ? '#D97706' : '#94A3B8';
 
   return (
-    <div 
-      className="flex gap-4 rounded-xl border border-[#E2E8F0] bg-white p-5 shadow-sm transition-all"
+    <div
+      className="flex gap-4 rounded-xl border border-edge bg-surface p-5 shadow-sm transition-all"
       style={{ animation: `slideUp 0.5s ease-out ${rank * 0.1}s both` }}
     >
       <div className="flex min-w-[36px] flex-col items-center gap-1">
-        <div 
+        <div
           className="flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-bold text-white"
           style={{ backgroundColor: priorityColor }}
         >
           {rank}
         </div>
-        <div className="text-[9px] font-medium uppercase tracking-wider text-[#94A3B8]">{recommendation.dimension}</div>
+        <div className="text-[9px] font-medium uppercase tracking-wider text-faint">{recommendation.dimension}</div>
         <div className="mt-0.5 h-1.5 w-1.5 rounded-full" style={{ backgroundColor: priorityColor }} />
       </div>
 
       <div className="flex-1">
-        <h4 className="text-[14px] font-semibold text-[#0F172A]">{recommendation.title}</h4>
-        <p className="mt-1 text-[12px] leading-relaxed text-[#475569]">{recommendation.explanation}</p>
-        
+        <h4 className="text-[14px] font-semibold text-ink">{recommendation.title}</h4>
+        <p className="mt-1 text-[12px] leading-relaxed text-body">{recommendation.explanation}</p>
+
         <div className="mt-3">
-          <span className="inline-block rounded bg-[#F0FDF4] px-2 py-1 text-[10px] font-semibold text-[#15803D]">
+          <span className="inline-block rounded bg-[#F0FDF4] px-2 py-1 text-[10px] font-semibold text-[#15803D] dark:bg-green-950/40 dark:text-green-400">
             −{recommendation.estimatedDaysReduction.toFixed(1)} days · Rs {recommendation.estimatedCashFreedLakhs.toFixed(1)}L freed
           </span>
         </div>
 
-        <button 
-          onClick={() => setExpanded(!expanded)} 
+        <button
+          onClick={() => setExpanded(!expanded)}
           className="mt-3 text-[11px] font-medium text-[#2563EB] hover:underline"
         >
           {expanded ? 'Hide steps ↑' : 'Show steps →'}
         </button>
 
         {expanded && (
-          <div className="mt-4 rounded-lg bg-[#F8FAFC] p-4 text-[12px] text-[#475569]">
-            <p className="mb-2 font-semibold text-[#0F172A]">Action steps</p>
+          <div className="mt-4 rounded-lg bg-surface2 p-4 text-[12px] text-body">
+            <p className="mb-2 font-semibold text-ink">Action steps</p>
             <ol className="list-inside list-decimal space-y-2">
               {recommendation.actionSteps.map((step, index) => (
                 <li key={index}>{step}</li>
@@ -239,8 +256,4 @@ function RecommendationCard({
       </div>
     </div>
   );
-}
-
-function estimateCashLocked(result: CCCResult): number {
-  return Math.max(Math.round(result.gapDays * 0.5 * 10) / 10, 0);
 }

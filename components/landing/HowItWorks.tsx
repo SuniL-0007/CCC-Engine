@@ -1,6 +1,6 @@
 'use client';
 
-import { UploadWidget } from '@/components/landing/UploadWidget';
+import { UploadWidget, type RecommendationSource } from '@/components/landing/UploadWidget';
 import { CCCResult, Recommendation } from '@/lib/ccc-engine/types';
 
 const STEPS = [
@@ -9,12 +9,12 @@ const STEPS = [
   { step: 3, title: 'Get your CCC', desc: 'Metrics, benchmarks, actions, and a PDF report' },
 ];
 
-export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[]) => void }) {
+export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCResult, recommendations: Recommendation[], source: RecommendationSource) => void }) {
   return (
     <div className="space-y-12" id="how-it-works">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-950 md:text-4xl">How it works</h2>
-        <p className="mx-auto mt-2 max-w-2xl text-slate-600">Three simple steps. 60 seconds.</p>
+        <h2 className="text-3xl font-bold text-ink md:text-4xl">How it works</h2>
+        <p className="mx-auto mt-2 max-w-2xl text-body">Three simple steps. 60 seconds.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
@@ -24,8 +24,8 @@ export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCRes
               <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
                 <span className="text-2xl font-bold text-primary">{item.step}</span>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-slate-950">{item.title}</h3>
-              <p className="text-slate-600">{item.desc}</p>
+              <h3 className="mb-2 text-xl font-bold text-ink">{item.title}</h3>
+              <p className="text-body">{item.desc}</p>
             </div>
             {item.step < 3 && (
               <div className="absolute right-[-18px] top-8 hidden text-2xl text-primary/30 md:block">
@@ -36,8 +36,8 @@ export function HowItWorks({ onResultsReady }: { onResultsReady: (result: CCCRes
         ))}
       </div>
 
-      <div className="mx-auto max-w-4xl rounded-lg border border-slate-200 bg-slate-50 p-5">
-        <h3 className="mb-5 text-center text-xl font-bold text-slate-950">
+      <div className="mx-auto max-w-4xl rounded-lg border border-edge bg-canvas p-5">
+        <h3 className="mb-5 text-center text-xl font-bold text-ink">
           Still reading? Your cash is waiting.
         </h3>
         <UploadWidget onResultsReady={onResultsReady} />
