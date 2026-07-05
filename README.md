@@ -37,18 +37,19 @@ No login. No data upload. 100% private.
 ```
 /app
   /api/recommendations      # Gemini AI enrichment endpoint
+  /dashboard                # Local (browser-only) CCC history & trends
+  /privacy, /terms          # Policy pages
   page.tsx                  # Landing page
   layout.tsx                # Root layout
 
 /components
   /landing                  # Navbar, UploadWidget, ResultPanel, etc.
-  /ui                       # shadcn/ui base components
-  /dashboard                # Dashboard components
 
 /lib
   /parser                   # SheetJS file parsing + fuzzy column matching
-  /ccc-engine               # DIO, DSO, DPO, CCC calculator + benchmarks
+  /ccc-engine               # DIO, DSO, DPO, CCC calculator + benchmarks + cash estimates
   /recommendations          # Layer 1 rules + Gemini client
+  /history                  # localStorage snapshots powering trends/dashboard
   /report                   # jsPDF report builder
 
 /public/templates           # Downloadable Excel templates

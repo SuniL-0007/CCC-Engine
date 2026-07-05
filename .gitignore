@@ -35,3 +35,5 @@ yarn-error.log*
 
 # OS
 Thumbs.db
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
