@@ -4,7 +4,7 @@ export function Footer() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="w-full border-t border-slate-200 bg-slate-50">
+    <footer className="w-full border-t border-edge bg-canvas">
       <div className="mx-auto max-w-6xl px-4 py-12">
         <div className="mb-8 grid grid-cols-1 gap-8 md:grid-cols-2">
           <div>
@@ -14,26 +14,26 @@ export function Footer() {
               </div>
               <span className="text-lg font-bold text-primary">FabricCash</span>
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-body">
               Built for textile mills across India: Surat, Tiruppur, Bhilwara, Panipat.
             </p>
           </div>
 
           <div className="flex gap-6 md:justify-end">
-            <a href="/privacy" className="text-sm text-slate-600 hover:text-primary">
+            <a href="/privacy" className="text-sm text-body hover:text-primary">
               Privacy Policy
             </a>
-            <a href="/terms" className="text-sm text-slate-600 hover:text-primary">
+            <a href="/terms" className="text-sm text-body hover:text-primary">
               Terms of Use
             </a>
-            <a href="mailto:hello@fabriccash.in" className="text-sm text-slate-600 hover:text-primary">
+            <a href="mailto:hello@fabriccash.in" className="text-sm text-body hover:text-primary">
               Contact
             </a>
           </div>
         </div>
 
-        <div className="border-t border-slate-200 pt-8">
-          <p className="text-center text-sm text-slate-600">
+        <div className="border-t border-edge pt-8">
+          <p className="text-center text-sm text-body">
             Copyright {currentYear} FabricCash. All rights reserved.
           </p>
         </div>

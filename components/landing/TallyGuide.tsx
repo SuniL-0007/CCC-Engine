@@ -25,28 +25,28 @@ export function TallyGuide() {
   return (
     <div className="space-y-8">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-slate-950 md:text-4xl">How to export from Tally</h2>
-        <p className="mt-2 text-slate-600">Three quick exports. Takes about 2 minutes.</p>
+        <h2 className="text-3xl font-bold text-ink md:text-4xl">How to export from Tally</h2>
+        <p className="mt-2 text-body">Three quick exports. Takes about 2 minutes.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {STEPS.map((step) => (
           <div
             key={step.number}
-            className="rounded-lg border-2 border-primary/20 bg-white p-6 transition-colors hover:border-primary"
+            className="rounded-lg border-2 border-primary/20 bg-surface p-6 transition-colors hover:border-primary"
           >
             <div className="mb-4 text-4xl font-bold text-primary/20">{step.number}</div>
-            <h3 className="mb-2 text-xl font-bold text-slate-950">{step.name}</h3>
-            <p className="mb-3 rounded bg-slate-50 p-3 font-mono text-xs leading-relaxed text-slate-700">
+            <h3 className="mb-2 text-xl font-bold text-ink">{step.name}</h3>
+            <p className="mb-3 rounded bg-surface2 p-3 font-mono text-xs leading-relaxed text-body">
               {step.path}
             </p>
-            <p className="text-sm leading-6 text-slate-600">{step.info}</p>
+            <p className="text-sm leading-6 text-body">{step.info}</p>
           </div>
         ))}
       </div>
 
       <div className="text-center">
-        <p className="mb-4 text-slate-600">Not on Tally?</p>
+        <p className="mb-4 text-body">Not on Tally?</p>
         <a
           href="/templates/fabriccash_templates.zip"
           download

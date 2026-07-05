@@ -31,18 +31,22 @@ export const viewport: Viewport = {
   themeColor: '#1B3A6B',
 };
 
+// Applies the saved (or system) theme before first paint to avoid a flash of the wrong theme.
+const themeInitScript = `(function(){try{var t=localStorage.getItem('fabriccash:theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className={`${inter.variable} bg-slate-50 text-slate-900 font-sans`}>
+      <body className={`${inter.variable} bg-canvas text-ink font-sans`}>
         {children}
       </body>
     </html>

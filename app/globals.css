@@ -2,6 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Semantic theme tokens (RGB triplets so Tailwind can apply opacity modifiers) */
+:root {
+  --canvas: 248 250 252;    /* page background  #F8FAFC */
+  --surface: 255 255 255;   /* cards / panels   #FFFFFF */
+  --surface-2: 241 245 249; /* subtle fills     #F1F5F9 */
+  --edge: 226 232 240;      /* borders          #E2E8F0 */
+  --ink: 15 23 42;          /* headings         #0F172A */
+  --body: 71 85 105;        /* body text        #475569 */
+  --faint: 148 163 184;     /* muted text       #94A3B8 */
+}
+
+.dark {
+  --canvas: 9 14 26;        /* page background  #090E1A */
+  --surface: 15 23 42;      /* cards / panels   #0F172A */
+  --surface-2: 30 41 59;    /* subtle fills     #1E293B */
+  --edge: 41 53 76;         /* borders          #29354C */
+  --ink: 241 245 249;       /* headings         #F1F5F9 */
+  --body: 148 163 184;      /* body text        #94A3B8 */
+  --faint: 100 116 139;     /* muted text       #64748B */
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -14,7 +35,8 @@ html {
 
 body {
   font-family: var(--font-inter), sans-serif;
-  background: #F8FAFC;
+  background: rgb(var(--canvas));
+  color: rgb(var(--ink));
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -37,7 +59,7 @@ code {
   }
 
   .card {
-    @apply rounded-[10px] border border-[#E2E8F0] bg-white p-6 shadow-sm;
+    @apply rounded-[10px] border border-edge bg-surface p-6 shadow-sm;
   }
 
   .btn-primary {
@@ -45,11 +67,11 @@ code {
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-[7px] border border-[#E2E8F0] bg-white px-6 py-2 text-[#475569] font-medium transition-smooth hover:bg-slate-50 disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-[7px] border border-edge bg-surface px-6 py-2 text-body font-medium transition-smooth hover:bg-surface2 disabled:opacity-50;
   }
 
   .input-field {
-    @apply w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition-smooth placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20;
+    @apply w-full rounded-lg border border-edge bg-surface px-3 py-2 text-sm text-ink outline-none transition-smooth placeholder:text-faint focus:border-primary focus:ring-2 focus:ring-primary/20;
   }
 }
 
