@@ -1,0 +1,13 @@
+{
+  "name": "fabriccash",
+  "owner": {
+    "name": "Sunil"
+  },
+  "plugins": [
+    {
+      "name": "vercel",
+      "source": "./vercel-plugin",
+      "description": "Vercel operations from chat: deploy, status, logs, env vars."
+    }
+  ]
+}
