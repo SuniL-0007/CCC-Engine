@@ -37,3 +37,7 @@ yarn-error.log*
 Thumbs.db
 # TypeScript incremental build info
 tsconfig.tsbuildinfo
+
+# Claude Code plugins
+.claude-plugin/
+vercel-plugin/

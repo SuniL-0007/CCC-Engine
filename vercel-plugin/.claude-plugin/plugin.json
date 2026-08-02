@@ -1,8 +1,0 @@
-{
-  "name": "vercel",
-  "version": "1.0.0",
-  "description": "Vercel operations from chat: deploy, deployment status, build/runtime logs, and environment variable management.",
-  "author": {
-    "name": "Sunil"
-  }
-}
